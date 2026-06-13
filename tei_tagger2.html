@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TEI注釈エディタ</title>
+<style>
+  :root{
+    --paper:#fbfaf6; --paper-2:#f3f0e6; --ink:#2b2a26; --ink-soft:#6f6a5e;
+    --rule:#e3ded0; --rule-strong:#cfc8b4; --shu:#a23b2c; --shu-soft:#c4715f;
+    --shadow:0 1px 2px rgba(40,36,28,.06),0 8px 24px rgba(40,36,28,.06);
+    --serif:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Noto Serif JP","Songti SC",serif;
+    --sans:system-ui,"Hiragino Sans","Yu Gothic UI","Yu Gothic","Noto Sans JP",sans-serif;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;}
+  body{font-family:var(--sans);color:var(--ink);background:var(--paper-2);overscroll-behavior:none;-webkit-text-size-adjust:100%;}
+  .app{display:grid;height:100%;grid-template-columns:1fr 320px;grid-template-rows:auto auto 1fr;
+    grid-template-areas:"head head" "pal pal" "main side";}
+  header{grid-area:head;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:9px 16px;background:var(--paper);border-bottom:1px solid var(--rule-strong);}
+  .brand{display:flex;flex-direction:column;line-height:1.1;margin-right:auto;}
+  .brand b{font-family:var(--serif);font-size:18px;letter-spacing:.04em;}
+  .brand span{font-size:11px;color:var(--ink-soft);letter-spacing:.05em;}
+  .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  button{font-family:var(--sans);cursor:pointer;}
+  .btn{border:1px solid var(--rule-strong);background:var(--paper);color:var(--ink);padding:9px 14px;border-radius:9px;min-height:42px;font-size:14px;transition:.12s;}
+  .btn:hover{background:#fff;} .btn:active{transform:translateY(1px);}
+  .btn.primary{background:var(--shu);border-color:var(--shu);color:#fff;} .btn.primary:hover{background:#8d3225;}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--ink-soft);}
+  .btn.sm{min-height:38px;padding:7px 9px;font-size:12.5px;border-radius:8px;}
+  .toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);border:1px solid var(--rule-strong);border-radius:9px;padding:6px 11px;min-height:42px;user-select:none;}
+  .toggle input{width:38px;height:22px;appearance:none;-webkit-appearance:none;background:var(--rule-strong);border-radius:11px;position:relative;cursor:pointer;transition:.15s;}
+  .toggle input:checked{background:var(--shu);}
+  .toggle input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.15s;}
+  .toggle input:checked::after{left:18px;}
+
+  .palette{grid-area:pal;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:9px 14px;background:var(--paper);border-bottom:1px solid var(--rule-strong);}
+  .pen{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--rule);background:var(--paper);border-radius:9px;padding:6px 11px 6px 8px;min-height:40px;color:var(--ink);}
+  .pen:hover{background:#fff;} .pen.active{border-color:var(--shu);background:#fff;box-shadow:var(--shadow);}
+  .pen .chip{width:22px;height:22px;border-radius:6px;flex:0 0 auto;border:1px solid rgba(0,0,0,.12);display:grid;place-items:center;font-family:var(--serif);font-size:12px;}
+  .pen.eraser .chip{background:repeating-linear-gradient(45deg,#fff,#fff 4px,#eee 4px,#eee 8px);}
+  .pen .chip.seg{background:conic-gradient(#f6cccc,#fad2e1,#fff0a8,#d6edda,#cdeff2,#e3d4f2,#ffe1b3,#f6cccc);}
+  .pen .lbl{font-size:13px;white-space:nowrap;}
+  .sep{width:1px;align-self:stretch;background:var(--rule);margin:3px 5px;}
+
+  main{grid-area:main;overflow:auto;padding:26px 28px 130px;}
+  .sheet{max-width:760px;margin:0 auto;background:var(--paper);border:1px solid var(--rule-strong);border-radius:6px;box-shadow:var(--shadow);padding:38px 44px;}
+  .cwrap{position:relative;}
+  #canvas{font-family:var(--serif);font-size:21px;line-height:2.15;color:var(--ink);letter-spacing:.01em;touch-action:pan-y;cursor:pointer;}
+  .ln{white-space:pre-wrap;min-height:1em;}
+  .ln:empty::after{content:"\200b";}
+  #canvas .c{position:relative;border-radius:2px;}
+  #canvas ruby.rb{ruby-position:over;}
+  #canvas ruby.rb rt{font-size:.42em;color:var(--ink-soft);font-family:var(--sans);letter-spacing:.02em;line-height:1;user-select:none;text-align:center;}
+  .c.uline{text-decoration:underline;text-decoration-color:var(--shu-soft);text-decoration-thickness:1.5px;text-underline-offset:3px;}
+  .c.ital{font-style:italic;}
+  .c.nested{box-shadow:inset 0 2px 0 var(--nest,rgba(0,0,0,.22));}
+  .c.preview{outline:2px solid var(--pen,var(--shu));outline-offset:-1px;background:var(--penbg,rgba(162,59,44,.15))!important;}
+  .c.sel{box-shadow:inset 0 -2.5px 0 var(--shu),inset 0 2.5px 0 var(--shu)!important;}
+
+  #handles{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:6;}
+  .handle{position:absolute;width:18px;pointer-events:auto;cursor:ew-resize;touch-action:none;transform:translateX(-50%);}
+  .handle .bar{position:absolute;left:50%;top:0;width:3px;height:100%;background:var(--shu);transform:translateX(-50%);border-radius:2px;}
+  .handle .grip{position:absolute;left:50%;top:-12px;width:21px;height:21px;border-radius:50%;background:var(--shu);border:2px solid var(--paper);box-shadow:var(--shadow);transform:translateX(-50%);}
+  .handle.end .grip{top:auto;bottom:-12px;}
+
+  .empty{max-width:580px;margin:8vh auto;text-align:center;color:var(--ink-soft);line-height:1.7;}
+  .empty h2{font-family:var(--serif);color:var(--ink);font-weight:600;}
+  code{background:var(--paper-2);padding:1px 5px;border-radius:4px;font-size:.9em;}
+
+  aside{grid-area:side;background:var(--paper);border-left:1px solid var(--rule-strong);overflow-y:auto;padding:14px 13px 60px;}
+  aside h3{font-size:12px;letter-spacing:.1em;color:var(--ink-soft);margin:6px 2px 8px;}
+  .warn{background:#fdf1ec;border:1px solid #eccabf;color:#8d3225;border-radius:8px;padding:9px 11px;font-size:12.5px;line-height:1.55;margin-bottom:10px;}
+  .warn:empty{display:none;}
+  .side-hint{color:var(--ink-soft);font-size:12.5px;line-height:1.6;padding:4px 2px;}
+  .switcher{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
+  .switcher .sb{border:1px solid var(--rule-strong);background:#fff;border-radius:7px;padding:4px 9px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px;}
+  .switcher .sb.cur{border-color:var(--shu);color:var(--shu);}
+  .switcher .sb .d{width:11px;height:11px;border-radius:3px;border:1px solid rgba(0,0,0,.12);}
+  .span-card{border:1px solid var(--rule);border-radius:10px;padding:11px;background:#fff;box-shadow:var(--shadow);}
+  .span-card .top{display:flex;align-items:center;gap:8px;}
+  .span-card .sw{width:16px;height:16px;border-radius:5px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
+  .span-card .nm{font-size:13.5px;font-weight:600;}
+  .span-card .ex{font-family:var(--serif);font-size:15px;color:var(--ink);margin:9px 0 2px;background:var(--paper-2);padding:7px 9px;border-radius:7px;max-height:90px;overflow:auto;white-space:pre-wrap;}
+  .span-card .pos{font-size:11px;color:var(--ink-soft);margin-bottom:2px;}
+  .span-card .attrs{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px;}
+  .span-card .attr{flex:1 1 46%;}
+  .span-card .attr label{display:block;font-size:10px;color:var(--ink-soft);margin-bottom:2px;letter-spacing:.04em;}
+  .span-card input{font-family:var(--sans);font-size:13px;border:1px solid var(--rule-strong);border-radius:7px;padding:7px 8px;width:100%;}
+  .adj{margin-top:12px;padding-top:11px;border-top:1px dashed var(--rule);}
+  .adj-ttl{font-size:11px;color:var(--ink-soft);letter-spacing:.06em;margin-bottom:7px;}
+  .adj-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .adj-row .adj-l{font-size:12px;width:32px;color:var(--ink-soft);}
+  .adj-row .btn.sm{flex:1;}
+  .btn.wide{width:100%;margin-top:3px;}
+  .span-card .row{display:flex;gap:8px;margin-top:11px;}
+  .span-card .row .btn{flex:1;min-height:40px;font-size:13px;}
+  .danger{color:var(--shu);border-color:var(--shu);}
+  details.all{margin-top:18px;}
+  details.all summary{font-size:12px;color:var(--ink-soft);cursor:pointer;letter-spacing:.05em;list-style:none;}
+  details.all summary::-webkit-details-marker{display:none;}
+  details.all summary::before{content:"▸ ";} details.all[open] summary::before{content:"▾ ";}
+  .mini{display:flex;align-items:center;gap:7px;padding:6px 4px;border-bottom:1px dashed var(--rule);font-size:12px;}
+  .mini:hover{background:var(--paper-2);} .mini .sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
+  .mini .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif);}
+
+  .badge{position:fixed;right:336px;bottom:18px;z-index:30;display:none;align-items:center;gap:9px;background:var(--paper);border:1px solid var(--rule-strong);border-radius:999px;padding:8px 15px 8px 9px;box-shadow:var(--shadow);font-size:13.5px;}
+  .badge.show{display:inline-flex;}
+  .badge .sw{width:18px;height:18px;border-radius:50%;border:1px solid rgba(0,0,0,.15);}
+
+  .popover{position:fixed;z-index:60;background:var(--paper);border:1px solid var(--rule-strong);border-radius:12px;box-shadow:var(--shadow);padding:11px;display:none;max-width:330px;}
+  .popover.open{display:block;}
+  .popover h5{margin:0 0 9px;font-size:11px;color:var(--ink-soft);letter-spacing:.07em;font-weight:600;}
+  .seg-grid{display:grid;grid-template-columns:repeat(4,minmax(60px,1fr));gap:6px;}
+  .seg-opt{display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--rule);border-radius:9px;padding:8px 5px;background:#fff;}
+  .seg-opt:hover{border-color:var(--shu);} .seg-opt .sw{width:100%;height:15px;border-radius:5px;border:1px solid rgba(0,0,0,.1);}
+  .seg-opt .t{font-size:11px;line-height:1.15;text-align:center;color:var(--ink);}
+
+  .modal{position:fixed;inset:0;background:rgba(40,36,28,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:50;}
+  .modal.open{display:flex;}
+  .box{background:var(--paper);border-radius:12px;box-shadow:var(--shadow);width:min(720px,100%);max-height:88vh;display:flex;flex-direction:column;overflow:hidden;}
+  .box .hd{display:flex;align-items:center;padding:13px 16px;border-bottom:1px solid var(--rule);}
+  .box .hd b{font-family:var(--serif);font-size:16px;}
+  .box .bd{padding:14px 16px;overflow:auto;}
+  .box textarea{width:100%;min-height:260px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;border:1px solid var(--rule-strong);border-radius:8px;padding:11px;resize:vertical;}
+  .box .ft{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--rule);align-items:center;flex-wrap:wrap;}
+  .hint{font-size:12px;color:var(--ink-soft);margin:0 0 10px;line-height:1.6;}
+  .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+  .status{font-size:12px;color:var(--ink-soft);}
+  .status b{color:var(--shu);}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-right:auto;}
+
+  @media (max-width:980px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;grid-template-areas:"head" "pal" "main";}
+    .palette{overflow-x:auto;flex-wrap:nowrap;}
+    aside{display:none;} aside.show{display:block;position:fixed;right:0;top:0;bottom:0;width:min(330px,88vw);z-index:40;box-shadow:var(--shadow);}
+    .badge{right:16px;} .seg-grid{grid-template-columns:repeat(3,minmax(58px,1fr));}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><b>TEI 注釈エディタ</b><span>青空文庫テキスト → TEI タグ付け（蛍光ペン方式）</span></div>
+    <div class="tools">
+      <label class="toggle" title="オンのとき、指（タッチ）では塗らずスクロールのみ。ペンで塗ります。"><input type="checkbox" id="penOnly" checked> ペンのみ</label>
+      <button class="btn" id="btnSide">注釈パネル</button>
+      <button class="btn" id="btnUndo">元に戻す</button>
+      <button class="btn" id="btnImport">読み込み</button>
+      <button class="btn primary" id="btnExport">TEI 書き出し</button>
+    </div>
+  </header>
+
+  <nav class="palette" id="palette"></nav>
+
+  <main id="main">
+    <div class="empty" id="empty">
+      <h2>テキストを読み込んでください</h2>
+      <p>青空文庫のプレーンテキスト、または<b>既存の TEI XML</b>を読み込めます。<br>
+         本文の貼り付け・ファイル選択どちらも可。青空文庫のヘッダ／注記（見出し記号など）は自動除去します。<br>
+         外字（<code>※［＃…第3水準1-88-22］</code>）は、お手持ちの<b>JIS-Unicode 対応テーブル</b>を読み込めば変換します。</p>
+      <p><button class="btn primary" id="btnImport2">読み込み</button>&nbsp;<button class="btn" id="btnSample">サンプルを試す</button></p>
+    </div>
+    <div class="sheet" id="sheet" style="display:none"><div class="cwrap" id="cwrap"><div id="canvas"></div><div id="handles"></div></div></div>
+  </main>
+
+  <aside id="side">
+    <h3>警告・案内</h3><div class="warn" id="warn"></div>
+    <h3>注釈の編集</h3>
+    <div id="sidePanel"><div class="side-hint">本文の色付き部分を<b>タップ</b>すると、その注釈の内容がここに表示されます（パレットで「選択」を選んでいるとき）。</div></div>
+  </aside>
+</div>
+
+<div class="badge" id="badge"><span class="sw" id="badgeSw"></span><span id="badgeName"></span></div>
+<div class="popover" id="segChooser"><h5>主題（seg）の種類を選ぶ</h5><div class="seg-grid" id="segGrid"></div></div>
+
+<div class="modal" id="importModal"><div class="box">
+  <div class="hd"><b>読み込み</b><button class="btn ghost" data-close style="margin-left:auto">閉じる</button></div>
+  <div class="bd">
+    <div class="toolrow">
+      <button class="btn sm" id="btnPickText">本文／TEI ファイルを選択…</button>
+      <input type="file" id="fileText" accept=".txt,.xml,.tei,.text,text/plain,application/xml" hidden>
+      <span class="status" id="fileTextStatus"></span>
+    </div>
+    <p class="hint">本文を貼り付け、または上のボタンでファイルを選択してください。改行は段落として扱います。
+      <code>｜語《よみ》</code> / <code>語《よみ》</code> のルビは自動で <code>&lt;ruby&gt;</code> 注釈になります。
+      TEI XML（このアプリで書き出したものなど）を貼り付けると、注釈付きで復元します。</p>
+    <textarea id="importText" placeholder="ここに本文または TEI XML を貼り付け…"></textarea>
+    <div class="toolrow" style="margin-top:12px">
+      <button class="btn sm" id="btnPickJis">外字テーブル（JIS-Unicode）を選択…</button>
+      <input type="file" id="fileJis" accept=".txt,text/plain" hidden>
+      <span class="status" id="jisStatus">外字テーブル：未読込（未変換の外字は ● になります）</span>
+    </div>
+  </div>
+  <div class="ft">
+    <label class="chk"><input type="checkbox" id="chkStrip" checked> 青空文庫の整形（ヘッダ・注記除去／外字変換）</label>
+    <button class="btn ghost" data-close>キャンセル</button>
+    <button class="btn primary" id="btnDoImport">読み込む</button>
+  </div>
+</div></div>
+
+<div class="modal" id="exportModal"><div class="box">
+  <div class="hd"><b>TEI XML 書き出し</b><button class="btn ghost" data-close style="margin-left:auto">閉じる</button></div>
+  <div class="bd"><p class="hint">スパン方式で構築した整形式 XML です。このまま保存しておけば、再度読み込んで編集を続けられます。</p>
+    <textarea id="exportText" readonly></textarea></div>
+  <div class="ft"><button class="btn ghost" data-close>閉じる</button><button class="btn primary" id="btnCopy">コピー</button></div>
+</div></div>
+
+<script>
+/* ===== タグ定義 ===== */
+const TAGS=[
+  {id:"persName_chr",label:"登場人物",channel:"bg",color:"#c9ddf2",build:s=>({open:`<persName type="chr"${attr("ref",s.ref)}>`,close:`</persName>`})},
+  {id:"persName_non",label:"固有名詞",channel:"bg",color:"#d8ecf9",build:s=>({open:`<persName type="non_chr">`,close:`</persName>`})},
+  {id:"place",label:"場所・地名",channel:"bg",color:"#e7d6b8",build:s=>({open:`<place${attr("ref",s.ref)}>`,close:`</place>`})},
+  {id:"head",label:"見出し",channel:"bg",color:"#dddddd",build:s=>({open:`<head>`,close:`</head>`})},
+  ...seg("family","家庭・家族","#f6cccc"),...seg("love","恋愛","#fad2e1"),...seg("emotion","感情","#e3d4f2"),
+  ...seg("personality","性格・気質","#e8e6fb"),...seg("economics","経済・消費","#fff0a8"),...seg("class","身分・階級","#efe1a0"),
+  ...seg("school","教育","#c6d4e1"),...seg("academic","学術","#1f3a5f","#fff"),...seg("art","芸術","#dceccb"),
+  ...seg("color","色","#cdeff2"),...seg("trendThought","思潮","#f3d2f3"),...seg("media","メディア","#e2e2e2"),
+  ...seg("body","身体・服飾","#d6edda"),...seg("eating","飲食","#ffe1b3"),...seg("trip","旅・移動","#b6dfdb"),...seg("event","イベント・事件","#b3b6bb"),
+  {id:"said",label:"発話・会話",channel:"underline",color:"var(--shu-soft)",swatch:"uline",build:s=>({open:`<said${attr("who",s.who)}${attr("toWhom",s.toWhom)}>`,close:`</said>`})},
+  {id:"quote",label:"引用",channel:"italic",color:"#efe9da",swatch:"ital",build:s=>({open:`<quote>`,close:`</quote>`})},
+  {id:"uncategorized",label:"未分類",channel:"bg",color:"#f2ebd8",build:s=>({open:`<seg ana="#uncategorized">`,close:`</seg>`})},
+  {id:"ruby",label:"ルビ",channel:"ruby",color:"#efe9da",depth:100,build:s=>({open:`<ruby>`,close:`<rt>${escHtml(s.reading||"")}</rt></ruby>`,depth:100})},
+];
+function seg(key,label,color,tc){return [{id:"seg_"+key,seg:true,label,channel:"bg",color,textColor:tc,build:s=>({open:`<seg ana="#${key}">`,close:`</seg>`})}];}
+function attr(n,v){return v?` ${n}="${escAttr(v)}"`:``;}
+const TAG=Object.fromEntries(TAGS.map(t=>[t.id,t]));
+const SEGS=TAGS.filter(t=>t.seg);
+
+/* ===== 状態 ===== */
+let plain="",spans=[],activePen=null,undoStack=[],seq=1;
+let selectedSpanId=null,lastCover=[],segPending=null,redrawId=null;
+let jisMap=null;
+const $=s=>document.querySelector(s);
+const canvas=$("#canvas");
+
+/* ===== 文字種・ルビ解析 ===== */
+function charClass(ch){const c=ch.codePointAt(0);
+  if((c>=0x4E00&&c<=0x9FFF)||(c>=0x3400&&c<=0x4DBF)||(c>=0xF900&&c<=0xFAFF)||c===0x3005||c===0x3006||c===0x3007||c===0x30F5||c===0x30F6)return'k';
+  if(c>=0x3041&&c<=0x309F)return'h'; if((c>=0x30A0&&c<=0x30FF)||(c>=0xFF66&&c<=0xFF9D))return'a';
+  if((c>=0x41&&c<=0x5A)||(c>=0x61&&c<=0x7A)||(c>=0xFF21&&c<=0xFF3A)||(c>=0xFF41&&c<=0xFF5A))return'l'; return'o';}
+function detectBase(out){if(!out.length)return 0;const cl=charClass(out[out.length-1]);let k=out.length;while(k>0&&charClass(out[k-1])===cl)k--;return k;}
+function parseRuby(raw){
+  raw=raw.replace(/\r\n?/g,"\n"); let out=""; const rubies=[]; let bar=-1;
+  for(let i=0;i<raw.length;i++){const ch=raw[i];
+    if(ch==="｜"||ch==="|"){bar=out.length;continue;}
+    if(ch==="《"){const cl=raw.indexOf("》",i); if(cl===-1){out+=ch;continue;} const rd=raw.slice(i+1,cl);
+      let st; if(bar!==-1){st=bar;bar=-1;} else st=detectBase(out);
+      if(out.length>st) rubies.push({start:st,end:out.length,reading:rd}); i=cl; continue;}
+    out+=ch;}
+  return {plain:out,rubies};
+}
+
+/* ===== 外字テーブル（従来スクリプトと同形式） ===== */
+function parseJisTable(text){
+  const map={};
+  for(const raw of text.split(/\r?\n/)){ const line=raw.trim();
+    if(!line||line.startsWith("##")) continue;
+    const p=line.split(/\s+/); if(p.length>=2) map[p[0]]=p[1]; }
+  return map;
+}
+function jisKey(a,c,d){ return `${a}-${(c+32).toString(16).toUpperCase().padStart(2,'0')}${(d+32).toString(16).toUpperCase().padStart(2,'0')}`; }
+function jisToChar(key){ if(!jisMap) return null; const u=jisMap[key]; if(!u) return null;
+  const cp=parseInt(String(u).replace(/^U\+/i,""),16); return isNaN(cp)?null:String.fromCodePoint(cp); }
+function resolveGaiji(text){
+  return text.replace(/※［＃[^］]*］/g, m=>{
+    const jm=m.match(/第(\d)水準(\d{1,2})-(\d{1,2})-(\d{1,2})/);
+    if(jm){ const ch=jisToChar(jisKey(+jm[1],+jm[3],+jm[4])); return ch||"●"; }
+    return "●";
+  });
+}
+
+/* ===== 青空文庫の整形（ヘッダ・注記除去＋外字変換） ===== */
+function stripAozora(raw){
+  raw=raw.replace(/\r\n?/g,"\n"); let lines=raw.split("\n");
+  const isDelim=l=>/^[\-－―─—_＝=]{10,}\s*$/.test(l.trim());
+  const delims=[]; for(let i=0;i<lines.length&&i<80;i++) if(isDelim(lines[i])) delims.push(i);
+  let s=0; if(delims.length>=2) s=delims[1]+1;     // 凡例ブロック（書名・著者・記号説明）を除去
+  let e=lines.length;
+  for(let i=s;i<lines.length;i++){ if(/^[ 　]*(底本[:：]|底本について|入力[:：]|校正[:：]|青空文庫)/.test(lines[i])){ e=i; break; } }
+  let body=lines.slice(s,e);
+  while(body.length&&body[0].trim()==="")body.shift();
+  while(body.length&&body[body.length-1].trim()==="")body.pop();
+  return body.join("\n");
+}
+function cleanPlain(raw){
+  let t=stripAozora(raw);
+  t=t.replace(/(?<!※)［＃[^］]*］/g,"");   // 見出し記号など、外字以外の［＃…］注記を除去
+  t=resolveGaiji(t);                       // ※［＃…］外字 → テーブルで変換（無ければ ●）
+  // 段落整形：行頭の字下げ（全角空白等）を除去し、空行を詰める（1段落＝1行）
+  t=t.split("\n").map(l=>l.replace(/^[　 \t]+/,"")).filter(l=>l.trim()!=="").join("\n");
+  return t;
+}
+
+/* ===== TEI 読み込み ===== */
+const STRUCT=new Set(["body","text","TEI","div","lg","front","back","group","argument","castList"]);
+function looksLikeTEI(t){ return /<\?xml|<\s*TEI\b|<\s*teiHeader\b|<\s*body\b/i.test(t) || /<\/?(persName|seg|said|quote|head)\b/i.test(t); }
+function tagForEl(el){
+  const ln=el.localName;
+  if(ln==="persName") return el.getAttribute("type")==="non_chr"?"persName_non":"persName_chr";
+  if(ln==="place")return"place"; if(ln==="head")return"head"; if(ln==="said")return"said"; if(ln==="quote")return"quote";
+  if(ln==="ruby")return"ruby";
+  if(ln==="seg"){ const ana=(el.getAttribute("ana")||"").replace(/^#/,""); if(ana==="uncategorized")return"uncategorized"; return TAG["seg_"+ana]?"seg_"+ana:"uncategorized"; }
+  return null;
+}
+function parseTEI(xml){
+  const doc=new DOMParser().parseFromString(xml,"application/xml");
+  if(doc.getElementsByTagName("parsererror").length) throw new Error("XML を解釈できませんでした。");
+  let body=null; for(const el of doc.getElementsByTagName("*")) if(el.localName==="body"){body=el;break;}
+  const root=body||doc.documentElement;
+  let out=""; const sp=[]; let id=1;
+  const isBlock=el=>["p","head","div","lg","l"].includes(el.localName);
+  function walk(node){
+    for(const ch of node.childNodes){
+      if(ch.nodeType===3){ const v=ch.nodeValue; if(/^\s*$/.test(v)&&STRUCT.has(node.localName)) continue; out+=v; continue; }
+      if(ch.nodeType!==1) continue;
+      const ln=ch.localName;
+      if(ln==="rt") continue;
+      if(ln==="lb"||ln==="br"){ out+="\n"; continue; }
+      const blk=isBlock(ch);
+      if(blk && out && !out.endsWith("\n")) out+="\n";
+      const tid=tagForEl(ch);
+      if(tid==="ruby"){
+        let base="",reading="";
+        for(const r of ch.childNodes){ if(r.nodeType===3) base+=r.nodeValue; else if(r.nodeType===1&&r.localName==="rt") reading+=r.textContent; else if(r.nodeType===1) base+=r.textContent; }
+        const st=out.length; out+=base; if(out.length>st) sp.push({id:id++,tagId:"ruby",start:st,end:out.length,reading});
+      } else if(tid){
+        const st=out.length; walk(ch); const en=out.length;
+        if(en>st){ const s={id:id++,tagId:tid,start:st,end:en};
+          if(tid==="persName_chr"||tid==="place"){ const r=ch.getAttribute("ref"); if(r)s.ref=r; }
+          if(tid==="said"){ const w=ch.getAttribute("who"),tw=ch.getAttribute("toWhom"); if(w)s.who=w; if(tw)s.toWhom=tw; }
+          sp.push(s); }
+      } else walk(ch);
+      if(blk && !out.endsWith("\n")) out+="\n";
+    }
+  }
+  walk(root);
+  out=out.replace(/\n+$/,"");
+  return {plain:out, spans:sp};
+}
+
+/* ===== 状態セット・読み込み ===== */
+function setState(p,sp){
+  plain=p; spans=sp; seq=(sp.reduce((m,s)=>Math.max(m,s.id),0))+1;
+  undoStack=[]; selectedSpanId=null; lastCover=[]; redrawId=null;
+  $("#empty").style.display="none"; $("#sheet").style.display="";
+  clearWarn(); render();
+}
+function loadPlain(raw,strip){
+  const cleaned=strip?cleanPlain(raw):raw;
+  const {plain:p,rubies}=parseRuby(cleaned);
+  let id=1; setState(p, rubies.map(r=>({id:id++,tagId:"ruby",start:r.start,end:r.end,reading:r.reading})));
+}
+function loadTEI(xml){ const {plain:p,spans:sp}=parseTEI(xml); setState(p,sp); }
+
+/* ===== 描画 ===== */
+let charEls=[],startHandleEl=null,endHandleEl=null,draggingHandle=null;
+function render(){ renderText(); renderSide(); if(draggingHandle) updateHandlePositions(); else positionHandles(); }
+function renderText(){
+  const n=plain.length;
+  const bgAt=new Array(n),nestColor=new Array(n),bgCount=new Uint16Array(n),uline=new Uint8Array(n),ital=new Uint8Array(n);
+  for(const s of spans){const def=TAG[s.tagId];
+    if(def.channel==="bg"){ for(let i=s.start;i<s.end;i++){ bgCount[i]++; const cur=bgAt[i];
+      if(!cur||(s.end-s.start)<=(cur.end-cur.start)){ if(cur)nestColor[i]=cur.color; bgAt[i]={color:def.color,textColor:def.textColor,start:s.start,end:s.end}; } else if(!nestColor[i])nestColor[i]=def.color; } }
+    else if(def.channel==="underline"){for(let i=s.start;i<s.end;i++)uline[i]=1;}
+    else if(def.channel==="italic"){for(let i=s.start;i<s.end;i++)ital[i]=1;} }
+  const rubyStart=new Map(),rubyEnd=new Map();
+  for(const s of spans) if(s.tagId==="ruby"){ rubyStart.set(s.start,1); rubyEnd.set(s.end-1,s.reading||""); }
+  const sel=spans.find(s=>s.id===selectedSpanId);
+  let html="<div class='ln'>";
+  for(let i=0;i<n;i++){ const ch=plain[i];
+    if(ch==="\n"){ html+="</div><div class='ln'>"; continue; }
+    if(rubyStart.has(i)) html+="<ruby class='rb'>";
+    let cls="c",st=""; const bg=bgAt[i];
+    if(bg){ st+=`background-color:${bg.color};`; if(bg.textColor)st+=`color:${bg.textColor};`; }
+    if(bgCount[i]>1&&nestColor[i]){ cls+=" nested"; st+=`--nest:${nestColor[i]};`; }
+    if(uline[i])cls+=" uline"; if(ital[i])cls+=" ital";
+    if(sel&&i>=sel.start&&i<sel.end)cls+=" sel";
+    html+=`<span class="${cls}" data-i="${i}"${st?` style="${st}"`:""}>${escHtml(ch)}</span>`;
+    if(rubyEnd.has(i)) html+=`<rt>${escHtml(rubyEnd.get(i))}</rt></ruby>`;
+  }
+  html+="</div>"; canvas.innerHTML=html;
+  charEls=new Array(n).fill(null);
+  canvas.querySelectorAll("[data-i]").forEach(el=>charEls[+el.dataset.i]=el);
+}
+
+/* ===== ハンドル（範囲調整） ===== */
+function positionHandles(){
+  const h=$("#handles"); h.innerHTML=""; startHandleEl=endHandleEl=null;
+  const sel=spans.find(s=>s.id===selectedSpanId); if(!sel||sel.tagId==="ruby") return;
+  if(charEls[sel.start]){ startHandleEl=mkHandle("start"); h.appendChild(startHandleEl); }
+  if(charEls[sel.end-1]){ endHandleEl=mkHandle("end"); h.appendChild(endHandleEl); }
+  updateHandlePositions();
+}
+function mkHandle(which){ const d=document.createElement("div"); d.className="handle "+which;
+  d.innerHTML='<span class="bar"></span><span class="grip"></span>';
+  d.addEventListener("pointerdown",e=>onHandleDown(e,which)); return d; }
+function updateHandlePositions(){
+  const sel=spans.find(s=>s.id===selectedSpanId); if(!sel) return;
+  const w=$("#cwrap").getBoundingClientRect();
+  if(startHandleEl){ const a=charEls[sel.start]?.getBoundingClientRect(); if(a){ startHandleEl.style.left=(a.left-w.left)+"px"; startHandleEl.style.top=(a.top-w.top)+"px"; startHandleEl.style.height=a.height+"px"; } }
+  if(endHandleEl){ const b=charEls[sel.end-1]?.getBoundingClientRect(); if(b){ endHandleEl.style.left=(b.right-w.left)+"px"; endHandleEl.style.top=(b.top-w.top)+"px"; endHandleEl.style.height=b.height+"px"; } }
+}
+function onHandleDown(e,which){
+  e.preventDefault(); e.stopPropagation();
+  const sel=spans.find(s=>s.id===selectedSpanId); if(!sel) return;
+  pushUndo(); draggingHandle=which; const h=e.currentTarget;
+  try{h.setPointerCapture(e.pointerId);}catch(_){}
+  const move=ev=>{
+    if(startHandleEl)startHandleEl.style.visibility="hidden"; if(endHandleEl)endHandleEl.style.visibility="hidden";
+    const idx=indexFromPoint(ev.clientX,ev.clientY);
+    if(startHandleEl)startHandleEl.style.visibility=""; if(endHandleEl)endHandleEl.style.visibility="";
+    if(idx==null)return; const s=spans.find(x=>x.id===selectedSpanId); if(!s)return;
+    if(which==="start") setSpanRange(s, Math.min(idx,s.end-1), s.end);
+    else setSpanRange(s, s.start, Math.max(idx+1,s.start+1));
+    render();
+  };
+  const up=()=>{ h.removeEventListener("pointermove",move); h.removeEventListener("pointerup",up); h.removeEventListener("pointercancel",up); draggingHandle=null; render(); };
+  h.addEventListener("pointermove",move); h.addEventListener("pointerup",up); h.addEventListener("pointercancel",up);
+}
+function setSpanRange(s,ns,ne){
+  if(ns<0||ne>plain.length||ns>=ne) return false;
+  const cand={start:ns,end:ne};
+  if(spans.some(o=>o.id!==s.id&&crosses(cand,o))) return false;
+  s.start=ns; s.end=ne; return true;
+}
+function nudge(which,dir){
+  const s=spans.find(x=>x.id===selectedSpanId); if(!s)return;
+  let ns=s.start,ne=s.end; if(which==="start")ns+=dir; else ne+=dir;
+  pushUndo(); if(!setSpanRange(s,ns,ne)){ undoStack.pop(); return; } clearWarn(); render();
+}
+
+/* ===== サイドパネル ===== */
+function renderSide(){
+  const panel=$("#sidePanel");
+  const sel=spans.find(s=>s.id===selectedSpanId);
+  if(!sel){ panel.innerHTML=`<div class="side-hint">本文の色付き部分を<b>タップ</b>すると、その注釈の内容がここに表示されます（パレットで「選択」を選んでいるとき）。</div>`+allList(); return; }
+  const def=TAG[sel.tagId];
+  let sw="";
+  if(lastCover.length>1){ sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";const d=TAG[s.tagId];
+    return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${col(d)}"></span>${escHtml(d.label)}</button>`;}).join("")+`</div>`; }
+  let attrs="";
+  if(sel.tagId==="persName_chr") attrs=ai(sel.id,"ref","ref",sel.ref??"#name");
+  if(sel.tagId==="place")        attrs=ai(sel.id,"ref","ref",sel.ref??"");
+  if(sel.tagId==="said")         attrs=ai(sel.id,"who","who",sel.who??"")+ai(sel.id,"toWhom","toWhom",sel.toWhom??"");
+  panel.innerHTML = sw +
+    `<div class="span-card">
+       <div class="top"><span class="sw" style="background:${col(def)}"></span><span class="nm">${escHtml(def.label)}</span></div>
+       <div class="pos" style="margin-top:8px">位置 ${sel.start}–${sel.end}（${sel.end-sel.start}文字）</div>
+       <div class="ex">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
+       ${attrs?`<div class="attrs">${attrs}</div>`:""}
+       <div class="adj">
+         <div class="adj-ttl">範囲の調整（本文上のハンドル ◯ をドラッグしても調整できます）</div>
+         <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
+         <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
+         <button class="btn sm wide" data-redraw="1">範囲を引き直す（なぞり直し）</button>
+       </div>
+       <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
+     </div>` + allList();
+}
+function allList(){
+  if(!spans.length) return "";
+  const sorted=[...spans].sort((a,b)=>a.start-b.start||a.end-b.end);
+  return `<details class="all"><summary>すべての注釈（${spans.length}件）</summary>`+
+    sorted.map(s=>{const d=TAG[s.tagId];return `<div class="mini" data-go="${s.id}"><span class="sw" style="background:${col(d)}"></span><span class="t">${escHtml(d.label)}：${escHtml(plain.slice(s.start,s.end).replace(/\n/g,'⏎')).slice(0,28)}</span></div>`;}).join("")+`</details>`;
+}
+function col(d){ return (d.color==='transparent'||d.color.startsWith('var'))?'#efe9da':d.color; }
+function ai(id,key,label,val){ return `<div class="attr"><label>${escHtml(label)}</label><input data-attr="${key}" data-sid="${id}" value="${escAttr(val)}"></div>`; }
+
+/* ===== 交差・適用・選択・消去 ===== */
+function crosses(a,b){ if(!(a.start<b.end&&b.start<a.end))return false;
+  const x=b.start<=a.start&&a.end<=b.end, y=a.start<=b.start&&b.end<=a.end; return !x&&!y; }
+function pushUndo(){ undoStack.push(JSON.stringify(spans)); if(undoStack.length>150)undoStack.shift(); }
+function commitTag(tagId,start,end,extra){
+  if(start>=end) return false; const def=TAG[tagId];
+  const cand={id:seq,tagId,start,end,...(extra||{})};
+  const hit=spans.find(s=>crosses(cand,s));
+  if(hit){ warn(`交差のため適用できません：「${def.label}」が「${TAG[hit.tagId].label}」と交差しています。入れ子になるよう取り直してください。`); flashCross(hit); return false; }
+  if(tagId==="persName_chr"&&!cand.ref)cand.ref="#name";
+  pushUndo(); seq++; spans.push(cand); clearWarn(); selectedSpanId=cand.id; lastCover=[cand.id]; render(); return true;
+}
+function selectAt(index){
+  const cover=spans.filter(s=>s.start<=index&&index<s.end&&s.tagId!=="ruby");  // ルビは選択対象外
+  if(!cover.length){ selectedSpanId=null; lastCover=[]; render(); return; }
+  cover.sort((a,b)=>(a.end-a.start)-(b.end-b.start));
+  lastCover=cover.map(s=>s.id); selectedSpanId=cover[0].id; render();
+}
+function eraseRange(lo,hi){  // 範囲の部分消去（重なる非ルビspanから lo..hi を引く。中抜けは分割）
+  let changed=false; const next=[];
+  for(const s of spans){
+    if(s.tagId==="ruby"||s.end<=lo||s.start>=hi){ next.push(s); continue; }
+    changed=true;
+    if(s.start<lo) next.push({...s,id:seq++,end:lo});
+    if(s.end>hi)   next.push({...s,id:seq++,start:hi});
+  }
+  if(!changed) return;
+  pushUndo(); spans=next; if(!spans.find(s=>s.id===selectedSpanId)){selectedSpanId=null;lastCover=[];} clearWarn(); render();
+}
+function deleteSpan(id){ pushUndo(); spans=spans.filter(s=>s.id!==id); if(selectedSpanId===id){selectedSpanId=null;lastCover=[];} render(); }
+
+/* ===== ポインタ操作 ===== */
+let drawing=false,anchor=null,lastRange=null,drawPointer=null;
+function indexFromPoint(x,y){ const el=document.elementFromPoint(x,y); if(!el)return null; const c=el.closest?.("[data-i]"); return c?+c.dataset.i:null; }
+function setPreview(a,b){
+  if(lastRange) for(let i=lastRange[0];i<=lastRange[1];i++) charEls[i]?.classList.remove("preview");
+  if(a==null||b==null){lastRange=null;return;}
+  const lo=Math.min(a,b),hi=Math.max(a,b); for(let i=lo;i<=hi;i++) charEls[i]?.classList.add("preview"); lastRange=[lo,hi];
+}
+function drawMode(){ return activePen!==null || redrawId!==null; }
+canvas.addEventListener("pointerdown",e=>{
+  if(!drawMode()) return;
+  if(!e.isPrimary) return;
+  if($("#penOnly").checked && e.pointerType!=="pen" && e.pointerType!=="mouse") return;
+  const i=indexFromPoint(e.clientX,e.clientY); if(i==null) return;
+  drawing=true; anchor=i; drawPointer=e.pointerId; setPreview(i,i);
+  try{canvas.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault();
+},{passive:false});
+canvas.addEventListener("pointermove",e=>{
+  if(!drawing||e.pointerId!==drawPointer) return;
+  const i=indexFromPoint(e.clientX,e.clientY); if(i!=null) setPreview(anchor,i); e.preventDefault();
+},{passive:false});
+function endDraw(e){
+  if(!drawing||e.pointerId!==drawPointer) return; drawing=false;
+  const i=indexFromPoint(e.clientX,e.clientY); const a=anchor,b=(i==null?anchor:i); setPreview(null,null);
+  anchor=null; drawPointer=null; if(a==null) return;
+  const lo=Math.min(a,b),hi=Math.max(a,b)+1;
+  if(redrawId!=null){ const s=spans.find(x=>x.id===redrawId); redrawId=null; updatePenUI();
+    if(s){ const cand={start:lo,end:hi}; if(lo>=hi||spans.some(o=>o.id!==s.id&&crosses(cand,o))){ warn("その範囲は交差するため設定できません。"); } else { pushUndo(); s.start=lo; s.end=hi; clearWarn(); } selectedSpanId=s.id; lastCover=[s.id]; render(); }
+    return; }
+  if(activePen==="__eraser") eraseRange(lo,hi);
+  else if(activePen==="seg") openSegChooser(lo,hi,e);
+  else if(activePen) commitTag(activePen,lo,hi);
+}
+canvas.addEventListener("pointerup",endDraw);
+canvas.addEventListener("pointercancel",e=>{ if(e.pointerId===drawPointer){drawing=false;setPreview(null,null);anchor=null;drawPointer=null;} });
+canvas.addEventListener("click",e=>{ if(drawMode())return; const i=indexFromPoint(e.clientX,e.clientY); if(i==null)return; selectAt(i); });
+
+/* ===== seg チューザ ===== */
+function openSegChooser(lo,hi,e){
+  segPending=[lo,hi]; for(let i=lo;i<hi;i++) charEls[i]?.classList.add("preview");
+  const pop=$("#segChooser"); pop.classList.add("open");
+  const r=charEls[hi-1]?.getBoundingClientRect();
+  let x=r?r.left:(e.clientX||100), y=r?r.bottom+6:(e.clientY||100);
+  pop.style.left="0px"; pop.style.top="0px";
+  const w=pop.offsetWidth,h=pop.offsetHeight;
+  x=Math.min(Math.max(8,x),innerWidth-w-8); y=Math.min(y,innerHeight-h-8); if(y<8)y=8;
+  pop.style.left=x+"px"; pop.style.top=y+"px";
+  setTimeout(()=>document.addEventListener("pointerdown",segOutside,true),0);
+}
+function segOutside(e){ if(!e.target.closest("#segChooser")) closeSegChooser(); }
+function closeSegChooser(){ $("#segChooser").classList.remove("open");
+  if(segPending) for(let i=segPending[0];i<segPending[1];i++) charEls[i]?.classList.remove("preview");
+  segPending=null; document.removeEventListener("pointerdown",segOutside,true); }
+
+/* ===== パレット ===== */
+function chipHtml(t){
+  if(t.swatch==="uline") return `<span class="chip" style="text-decoration:underline;text-decoration-color:var(--shu-soft);text-underline-offset:2px">あ</span>`;
+  if(t.swatch==="ital")  return `<span class="chip" style="font-style:italic">あ</span>`;
+  return `<span class="chip" style="background:${t.color}${t.textColor?`;color:${t.textColor}`:""}">あ</span>`;
+}
+function buildPalette(){
+  const pal=$("#palette");
+  const mk=(html,pen,extra="")=>{const b=document.createElement("button");b.className="pen "+extra;b.dataset.pen=pen;b.innerHTML=html;return b;};
+  const sep=()=>{const d=document.createElement("div");d.className="sep";return d;};
+  pal.appendChild(mk(`<span class="chip" style="background:#fff">▣</span><span class="lbl">選択</span>`,""));
+  pal.appendChild(sep());
+  for(const id of ["persName_chr","persName_non","place","head"]){const t=TAG[id];pal.appendChild(mk(`${chipHtml(t)}<span class="lbl">${t.label}</span>`,id));}
+  pal.appendChild(sep());
+  pal.appendChild(mk(`<span class="chip seg"></span><span class="lbl">主題 seg ▾</span>`,"seg"));
+  pal.appendChild(sep());
+  for(const id of ["said","quote","uncategorized"]){const t=TAG[id];pal.appendChild(mk(`${chipHtml(t)}<span class="lbl">${t.label}</span>`,id));}
+  pal.appendChild(sep());
+  pal.appendChild(mk(`<span class="chip"></span><span class="lbl">消しゴム</span>`,"__eraser","eraser"));
+  pal.addEventListener("click",e=>{ const b=e.target.closest(".pen"); if(!b)return;
+    activePen=b.dataset.pen||null; redrawId=null;
+    pal.querySelectorAll(".pen").forEach(x=>x.classList.toggle("active",x===b)); updatePenUI(); });
+  const grid=$("#segGrid");
+  for(const t of SEGS){ const o=document.createElement("button"); o.className="seg-opt"; o.dataset.seg=t.id;
+    o.innerHTML=`<span class="sw" style="background:${t.color}"></span><span class="t">${t.label}</span>`; grid.appendChild(o); }
+  grid.addEventListener("click",e=>{ const o=e.target.closest("[data-seg]"); if(!o||!segPending)return; const [lo,hi]=segPending; const id=o.dataset.seg; closeSegChooser(); commitTag(id,lo,hi); });
+}
+
+/* ===== カーソル・バッジ ===== */
+function penCursor(c){ if(c==='transparent'||c.startsWith('var'))c='#a23b2c';
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="30"><circle cx="15" cy="15" r="9" fill="${c}" stroke="#2b2a26" stroke-width="1.5" opacity="0.95"/><circle cx="15" cy="15" r="1.6" fill="#2b2a26"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 15 15, crosshair`; }
+function eraserCursor(){ const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><rect x="6" y="9" width="16" height="11" rx="2" fill="#fff" stroke="#2b2a26" stroke-width="1.6"/><line x1="13" y1="9" x2="13" y2="20" stroke="#2b2a26" stroke-width="1"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 14 14, pointer`; }
+function updatePenUI(){
+  const badge=$("#badge"); let col="#a23b2c",name="",show=true,cur="pointer";
+  if(redrawId!=null){ name="範囲を引き直し中"; col="#a23b2c"; cur=penCursor("#a23b2c"); }
+  else if(activePen===null){ show=false; cur="pointer"; }
+  else if(activePen==="__eraser"){ name="消しゴム（なぞった範囲を部分消去）"; col="#8a8a8a"; cur=eraserCursor(); }
+  else if(activePen==="seg"){ name="主題 seg（なぞって種類を選択）"; col="#9b8fb0"; cur=penCursor("#9b8fb0"); }
+  else { const t=TAG[activePen]; name=t.label; col=(t.channel==="bg")?t.color:"#a23b2c"; cur=penCursor(col); }
+  canvas.style.cursor=cur;
+  canvas.style.setProperty("--pen",col); canvas.style.setProperty("--penbg", col[0]==="#"?col+"99":"rgba(162,59,44,.2)");
+  badge.classList.toggle("show",show); $("#badgeSw").style.background=(col==='transparent')?'#a23b2c':col; $("#badgeName").textContent=name;
+}
+
+/* ===== TEI 書き出し ===== */
+function buildSegment(text,local){
+  const n=text.length; const op=Array.from({length:n+1},()=>[]),cl=Array.from({length:n+1},()=>[]);
+  local.forEach((s,i)=>s.ord=i);
+  const key=(a,b)=> a.start-b.start || b.end-a.end || a.depth-b.depth || a.ord-b.ord;
+  local.slice().sort(key).forEach(s=>op[s.start].push(s));
+  local.slice().sort((a,b)=>-key(a,b)).forEach(s=>cl[s.end].push(s));
+  let out=""; for(let p=0;p<=n;p++){ for(const s of cl[p])out+=s.close; for(const s of op[p])out+=s.open; if(p<n)out+=escHtml(text[p]); } return out;
+}
+function exportTEI(){
+  const paras=[]; let st=0; for(let i=0;i<=plain.length;i++) if(i===plain.length||plain[i]==="\n"){paras.push([st,i]);st=i+1;}
+  const lines=[];
+  for(const [ps,pe] of paras){ const text=plain.slice(ps,pe); if(pe===ps) continue;
+    const local=[]; let wholeHead=false;
+    for(const s of spans){ const cs=Math.max(s.start,ps),ce=Math.min(s.end,pe); if(ce<=cs)continue;
+      const {open,close,depth}=TAG[s.tagId].build(s); local.push({open,close,depth:depth||0,start:cs-ps,end:ce-ps});
+      if(s.tagId==="head"&&s.start<=ps&&s.end>=pe) wholeHead=true; }
+    const inner=buildSegment(text,local); lines.push("    "+(wholeHead?inner:`<p>${inner}</p>`)); }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+  <text>
+    <body>
+${lines.join("\n")}
+    </body>
+  </text>
+</TEI>`;
+}
+
+/* ===== ユーティリティ ===== */
+function escHtml(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function escAttr(s){return escHtml(s).replace(/"/g,"&quot;");}
+function warn(m){ $("#warn").textContent=m; if(matchMedia("(max-width:980px)").matches) $("#side").classList.add("show"); }
+function clearWarn(){ $("#warn").textContent=""; }
+function flashCross(s){ for(let i=s.start;i<s.end;i++){const el=charEls[i];if(el){el.style.outline="2px solid var(--shu)";setTimeout(()=>el.style.outline="",900);}} }
+function currentRaw(){ const rb=spans.filter(s=>s.tagId==="ruby").sort((a,b)=>b.start-a.start); let t=plain; for(const r of rb) t=t.slice(0,r.end)+"《"+(r.reading||"")+"》"+t.slice(r.end); return t; }
+
+/* ===== 結線 ===== */
+buildPalette(); updatePenUI();
+$("#btnImport").onclick=$("#btnImport2").onclick=()=>{ $("#importText").value=plain?currentRaw():""; $("#fileTextStatus").textContent=""; $("#importModal").classList.add("open"); $("#importText").focus(); };
+$("#btnPickText").onclick=()=>$("#fileText").click();
+$("#fileText").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ $("#importText").value=r.result; $("#fileTextStatus").textContent=`読込：${f.name}`; }; r.readAsText(f); };
+$("#btnPickJis").onclick=()=>$("#fileJis").click();
+$("#fileJis").onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader();
+  r.onload=()=>{ try{ jisMap=parseJisTable(r.result); $("#jisStatus").innerHTML=`外字テーブル：<b>${Object.keys(jisMap).length}件</b> 読込済み（${escHtml(f.name)}）`; }catch(_){ $("#jisStatus").textContent="外字テーブルの読込に失敗しました。"; } }; r.readAsText(f); };
+$("#btnDoImport").onclick=()=>{ const t=$("#importText").value; if(t.trim()){
+    try{ if(looksLikeTEI(t)) loadTEI(t); else loadPlain(t,$("#chkStrip").checked); }
+    catch(err){ alert("読み込みに失敗しました：\n"+err.message); return; } }
+  $("#importModal").classList.remove("open"); };
+$("#btnSample").onclick=()=>{ loadPlain(SAMPLE,true); };
+$("#btnExport").onclick=()=>{ if(!plain){warn("先にテキストを読み込んでください。");return;} $("#exportText").value=exportTEI(); $("#exportModal").classList.add("open"); };
+$("#btnCopy").onclick=()=>{ const ta=$("#exportText"); ta.select(); navigator.clipboard?.writeText(ta.value); $("#btnCopy").textContent="コピーしました"; setTimeout(()=>$("#btnCopy").textContent="コピー",1200); };
+$("#btnUndo").onclick=()=>{ if(undoStack.length){ spans=JSON.parse(undoStack.pop()); if(!spans.find(s=>s.id===selectedSpanId))selectedSpanId=null; clearWarn(); render(); } };
+$("#btnSide").onclick=()=>{ $("#side").classList.toggle("show"); };
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>b.closest(".modal").classList.remove("open"));
+document.querySelectorAll(".modal").forEach(m=>m.addEventListener("pointerdown",e=>{ if(e.target===m) m.classList.remove("open"); }));
+
+$("#sidePanel").addEventListener("click",e=>{
+  const del=e.target.closest("[data-del]"); if(del){ deleteSpan(+del.dataset.del); return; }
+  if(e.target.closest("[data-deselect]")){ selectedSpanId=null; lastCover=[]; render(); return; }
+  const sw=e.target.closest("[data-sw]"); if(sw){ selectedSpanId=+sw.dataset.sw; render(); return; }
+  const go=e.target.closest("[data-go]"); if(go){ const s=spans.find(x=>x.id===+go.dataset.go); if(s){selectedSpanId=s.id;lastCover=[s.id];render();} return; }
+  const adj=e.target.closest("[data-adj]"); if(adj){ const a=adj.dataset.adj;
+    if(a==="sw")nudge("start",-1); else if(a==="sn")nudge("start",1); else if(a==="en")nudge("end",-1); else if(a==="ew")nudge("end",1); return; }
+  if(e.target.closest("[data-redraw]")){ redrawId=selectedSpanId; updatePenUI(); warn("引き直す範囲を本文上でなぞってください。"); return; }
+});
+$("#sidePanel").addEventListener("input",e=>{ const inp=e.target.closest("[data-attr]"); if(!inp)return;
+  const s=spans.find(x=>x.id===+inp.dataset.sid); if(!s)return; s[inp.dataset.attr]=inp.value; });
+
+addEventListener("resize",()=>{ if(selectedSpanId!=null && !draggingHandle) positionHandles(); });
+
+/* サンプル（夏目漱石『吾輩は猫である』冒頭 — パブリックドメイン） */
+const SAMPLE=`一
+
+吾輩《わがはい》は猫である。名前はまだ無い。
+どこで生れたかとんと見当《けんとう》がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。吾輩はここで始めて人間というものを見た。
+しかもあとで聞くとそれは書生《しょせい》という人間中で一番｜獰悪《どうあく》な種族であったそうだ。`;
+</script>
+</body>
+</html>
