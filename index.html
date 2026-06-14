@@ -31,7 +31,7 @@
   .btn.sm{min-height:36px;padding:6px 9px;font-size:12.5px;border-radius:8px;}
   .fs{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule-strong);border-radius:9px;padding:3px 8px;min-height:42px;}
   .fs b{font-size:12px;color:var(--ink-soft);min-width:38px;text-align:center;}
-  .fs button{border:none;background:transparent;font-size:14px;width:30px;height:30px;border-radius:6px;}
+  .fs button{border:none;background:transparent;font-size:14px;width:auto;min-width:30px;padding:0 5px;height:30px;border-radius:6px;white-space:nowrap;}
   .fs button:hover{background:var(--paper-2);}
   .toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);border:1px solid var(--rule-strong);border-radius:9px;padding:5px 10px;min-height:42px;user-select:none;}
   .toggle input{width:38px;height:22px;appearance:none;-webkit-appearance:none;background:var(--rule-strong);border-radius:11px;position:relative;cursor:pointer;}
@@ -229,7 +229,7 @@ const escHtml=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>
 const escAttr=s=>escHtml(s).replace(/"/g,"&quot;");
 
 /* ===== タグ定義モデル（色／タグ／ラベル／属性／属性値） ===== */
-const EDITABLE={persName:["ref"],place:["ref"],said:["who","toWhom"]};
+const EDITABLE={persName:["ref"],place:["ref"],said:["who","toWhom"],head:["type"]};
 const channelOf=t=>t==="said"?"underline":t==="quote"?"italic":"bg";
 const DEFAULT_DEFS=[
  {color:"#c9ddf2",tag:"persName",label:"登場人物",attr:"type",val:"chr"},
@@ -274,7 +274,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
   if(!best)return null; const s={tagId:best.id};for(const ea of(EDITABLE[ln]||[])){const v=el.getAttribute(ea);if(v)s[ea]=v;}return s; }
 
 /* ===== 状態 ===== */
-let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,jisMap=null;
+let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null;
 const canvas=$("#canvas");
 
 /* ===== 外字・整形・ルビ（従来スクリプト互換） ===== */
@@ -283,8 +283,6 @@ const jisKey=(a,c,d)=>`${a}-${(c+32).toString(16).toUpperCase().padStart(2,'0')}
 function jisToChar(k){if(!jisMap)return null;const u=jisMap[k];if(!u)return null;const cp=parseInt(String(u).replace(/^U\+/i,""),16);return isNaN(cp)?null:String.fromCodePoint(cp);}
 function resolveGaiji(t){return t.replace(/※［＃[^］]*］/g,m=>{const jm=m.match(/第(\d)水準(\d{1,2})-(\d{1,2})-(\d{1,2})/);if(jm){return jisToChar(jisKey(+jm[1],+jm[3],+jm[4]))||"●";}return "●";});}
 function stripAozora(raw){raw=raw.replace(/\r\n?/g,"\n");let L=raw.split("\n");const isD=l=>/^[\-－―─—_＝=]{10,}\s*$/.test(l.trim());const d=[];for(let i=0;i<L.length&&i<80;i++)if(isD(L[i]))d.push(i);let s=0;if(d.length>=2)s=d[1]+1;let e=L.length;for(let i=s;i<L.length;i++){if(/^[ 　]*(底本[:：]|底本について|入力[:：]|校正[:：]|青空文庫)/.test(L[i])){e=i;break;}}let b=L.slice(s,e);while(b.length&&b[0].trim()==="")b.shift();while(b.length&&b[b.length-1].trim()==="")b.pop();return b.join("\n");}
-function cleanPlain(raw){let t=stripAozora(raw);t=t.replace(/(?<!※)［＃[^］]*］/g,"");t=resolveGaiji(t);
-  t=t.split("\n").filter(l=>l.trim()!=="").join("\n");return t;} // 空行は詰める（字下げ＝行頭全角空白は保持）
 function detectBase(out){if(!out.length)return 0;const cc=ch=>{const c=ch.codePointAt(0);if((c>=0x4E00&&c<=0x9FFF)||(c>=0x3400&&c<=0x4DBF)||c===0x3005||c===0x3006||c===0x3007||c===0x30F6)return'k';if(c>=0x3041&&c<=0x309F)return'h';if(c>=0x30A0&&c<=0x30FF)return'a';if((c>=0x41&&c<=0x5A)||(c>=0x61&&c<=0x7A))return'l';return'o';};const cl=cc(out[out.length-1]);let k=out.length;while(k>0&&cc(out[k-1])===cl)k--;return k;}
 function parseRuby(raw){raw=raw.replace(/\r\n?/g,"\n");let out="";const rb=[];let bar=-1;
   for(let i=0;i<raw.length;i++){const ch=raw[i];if(ch==="｜"||ch==="|"){bar=out.length;continue;}
@@ -300,9 +298,12 @@ function exportTEI(){const paras=[];let st=0;for(let i=0;i<=plain.length;i++)if(
   const lines=[];for(const[ps,pe]of paras){const text=plain.slice(ps,pe);if(pe===ps)continue;const loc=[];let wh=false;
     for(const s of spans){const cs=Math.max(s.start,ps),ce=Math.min(s.end,pe);if(ce<=cs)continue;const{open,close,depth}=buildOC(s);if(!open)continue;loc.push({open,close,depth,start:cs-ps,end:ce-ps});if(isHead(s.tagId)&&s.start<=ps&&s.end>=pe)wh=true;}
     lines.push("    "+(wh?buildSegment(text,loc):`<p>${buildSegment(text,loc)}</p>`));}
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0">\n  <text>\n    <body>\n${lines.join("\n")}\n    </body>\n  </text>\n</TEI>`;}
+  const hdrPart=teiHeader?"\n  "+teiHeader:"";
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<TEI xmlns="http://www.tei-c.org/ns/1.0">${hdrPart}\n  <text>\n    <body>\n${lines.join("\n")}\n    </body>\n  </text>\n</TEI>`;}
 function looksLikeTEI(t){return /<\?xml|<\s*TEI\b|<\s*teiHeader\b|<\s*body\b/i.test(t)||/<\/?(persName|seg|said|quote|head|place)\b/i.test(t);}
 function parseTEI(xml){const doc=new DOMParser().parseFromString(xml,"application/xml");if(doc.getElementsByTagName("parsererror").length)throw new Error("XML を解釈できませんでした。");
+  const h0=xml.indexOf("<teiHeader"),h1=h0!==-1?xml.indexOf("</teiHeader>",h0):-1;
+  const hdr=h1!==-1?xml.slice(h0,h1+12):null; // "</teiHeader>".length===12
   let body=null;for(const el of doc.getElementsByTagName("*"))if(el.localName==="body"){body=el;break;}const root=body||doc.documentElement;
   let out="";const sp=[];let id=1;const isBlk=el=>["p","head","div","lg","l"].includes(el.localName);
   function walk(node){for(const ch of node.childNodes){
@@ -313,13 +314,31 @@ function parseTEI(xml){const doc=new DOMParser().parseFromString(xml,"applicatio
     else if(inf){const s0=out.length;walk(ch);const e0=out.length;if(e0>s0)sp.push({id:id++,start:s0,end:e0,...inf});}
     else walk(ch);
     if(blk&&!out.endsWith("\n"))out+="\n";}}
-  walk(root);out=out.replace(/\n+$/,"");return{plain:out,spans:sp};}
+  walk(root);out=out.replace(/\n+$/,"");return{plain:out,spans:sp,teiHeader:hdr};}
 
 /* ===== 読み込み・状態セット ===== */
 function setState(p,sp){plain=p;spans=sp;seq=(sp.reduce((m,s)=>Math.max(m,s.id),0))+1;selectedSpanId=null;lastCover=[];pendingRange=null;redrawId=null;
   $("#empty").style.display="none";$("#sheet").style.display="";clearWarn();render();persist();}
-function loadPlain(raw,strip){const cleaned=strip?cleanPlain(raw):raw.replace(/\r\n?/g,"\n");const {plain:p,rubies}=parseRuby(cleaned);let id=1;setState(p,rubies.map(r=>({id:id++,tagId:"ruby",start:r.start,end:r.end,reading:r.reading})));}
-function loadTEI(xml){const {plain:p,spans:sp}=parseTEI(xml);setState(p,sp);}
+function loadPlain(raw,strip){
+  if(!strip){const {plain:p,rubies}=parseRuby(raw.replace(/\r\n?/g,"\n"));let id=1;teiHeader=null;setState(p,rubies.map(r=>({id:id++,tagId:"ruby",start:r.start,end:r.end,reading:r.reading})));return;}
+  // 青空文庫整形：見出し注記を検出してから一括削除
+  const HTYPE={"大":"large","中":"medium","小":"small"},HPAT=/［＃「[^」]*」は([大中小])見出し］/;
+  const cLines=[],lTypes=[];
+  for(const l of stripAozora(raw).split("\n")){
+    const m=l.match(HPAT);
+    const cl=resolveGaiji(l.replace(/(?<!※)［＃[^］]*］/g,""));
+    if(cl.trim()==="")continue;
+    cLines.push(cl);lTypes.push(m?HTYPE[m[1]]:null);
+  }
+  const {plain:p,rubies}=parseRuby(cLines.join("\n"));
+  const fLines=p.split("\n");
+  let id=1,off=0;
+  const headId=Object.keys(SIMPLE).find(k=>SIMPLE[k].tag==="head")||"head__";
+  const allSpans=rubies.map(r=>({id:id++,tagId:"ruby",start:r.start,end:r.end,reading:r.reading}));
+  for(let i=0;i<fLines.length;i++){const len=fLines[i].length;if(i<lTypes.length&&lTypes[i])allSpans.push({id:id++,tagId:headId,start:off,end:off+len,type:lTypes[i]});off+=len+1;}
+  teiHeader=null;setState(p,allSpans);
+}
+function loadTEI(xml){const {plain:p,spans:sp,teiHeader:hdr}=parseTEI(xml);teiHeader=hdr;setState(p,sp);}
 
 /* ===== 描画（セグメント方式：文字単位spanは作らない） ===== */
 function render(){renderText();renderSide();if(pendingRange){const r=globalRangeToDom(pendingRange[0],pendingRange[1]);if(r)drawOverlay(r);else clearOverlay();}else clearOverlay();debouncedPersist();}
@@ -433,7 +452,7 @@ $("#segGrid").addEventListener("click",e=>{const o=e.target.closest("[data-val]"
 $("#segCancel").onclick=closeSegChooser;
 $("#segOk").onclick=()=>{const anas=[...chooserSel];if(!anas.length){warn("分類を1つ以上選んでください。");return;}
   if(chooserTarget.mode==="new"){const[lo,hi]=chooserTarget.range;const cand={id:seq,tagId:chooserEl,start:lo,end:hi,anas};const hit=spans.find(s=>crosses(cand,s));if(hit){warn("交差のため適用できません。");closeSegChooser();return;}pushUndo();seq++;spans.push(cand);selectedSpanId=cand.id;lastCover=[cand.id];pendingRange=null;}
-  else{const s=spans.find(x=>x.id===chooserTarget.id);if(s){pushUndo();s.tagId=chooserEl;s.anas=anas;delete s.ref;delete s.who;delete s.toWhom;selectedSpanId=s.id;}}
+  else{const s=spans.find(x=>x.id===chooserTarget.id);if(s){pushUndo();s.tagId=chooserEl;s.anas=anas;delete s.ref;delete s.who;delete s.toWhom;delete s.type;selectedSpanId=s.id;}}
   closeSegChooser();clearWarn();render();};
 // チューザのドラッグ移動
 (()=>{const pop=$("#segPop"),head=$("#segHead");let dx=0,dy=0,drag=false;
@@ -474,14 +493,14 @@ $("#sidePanel").addEventListener("input",e=>{
   const inp=e.target.closest("[data-attr]");if(inp){const s=spans.find(x=>x.id===selectedSpanId);if(s){s[inp.dataset.attr]=inp.value;debouncedPersist();}return;}
   const sel=e.target.closest("[data-type]");if(sel){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;const v=sel.value;
     if(v[0]==="@"){openSegChooser(v.slice(1),{mode:"edit",id:s.id},s.anas||[]);}
-    else{pushUndo();s.tagId=v;delete s.anas;delete s.ref;delete s.who;delete s.toWhom;render();}return;}
+    else{pushUndo();s.tagId=v;delete s.anas;delete s.ref;delete s.who;delete s.toWhom;delete s.type;render();}return;}
 });
 /* ===== 永続化（localStorage：自動保存＋復元） ===== */
 const LSKEY="teiTagger.v3";let saveTimer=null;
-function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,defs:DEFS,jisMap}));}catch(_){}}
+function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,teiHeader,defs:DEFS,jisMap}));}catch(_){}}
 function debouncedPersist(){clearTimeout(saveTimer);saveTimer=setTimeout(persist,400);}
 function restore(){try{const j=JSON.parse(localStorage.getItem(LSKEY)||"null");if(!j)return false;
-  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;if(j.sheetWidth)sheetWidth=j.sheetWidth;
+  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;if(j.sheetWidth)sheetWidth=j.sheetWidth;if(j.teiHeader!==undefined)teiHeader=j.teiHeader;
   if(typeof j.plain==="string"){plain=j.plain;spans=j.spans||[];seq=j.seq||(spans.reduce((m,s)=>Math.max(m,s.id),0)+1);return true;}}catch(_){}return false;}
 
 /* ===== ファイル読み込み（Shift-JIS / UTF-8 自動判定） ===== */
