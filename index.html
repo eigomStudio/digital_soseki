@@ -12,7 +12,7 @@
     --shadow:0 1px 2px rgba(40,36,28,.06),0 8px 24px rgba(40,36,28,.06);
     --serif:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Noto Serif JP",serif;
     --sans:system-ui,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif;
-    --fs:21px;
+    --fs:18px;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;height:100%;}
@@ -31,7 +31,7 @@
   .btn.sm{min-height:36px;padding:6px 9px;font-size:12.5px;border-radius:8px;}
   .fs{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule-strong);border-radius:9px;padding:3px 8px;min-height:42px;}
   .fs b{font-size:12px;color:var(--ink-soft);min-width:38px;text-align:center;}
-  .fs button{border:none;background:transparent;font-size:18px;width:30px;height:30px;border-radius:6px;}
+  .fs button{border:none;background:transparent;font-size:14px;width:30px;height:30px;border-radius:6px;}
   .fs button:hover{background:var(--paper-2);}
   .toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);border:1px solid var(--rule-strong);border-radius:9px;padding:5px 10px;min-height:42px;user-select:none;}
   .toggle input{width:38px;height:22px;appearance:none;-webkit-appearance:none;background:var(--rule-strong);border-radius:11px;position:relative;cursor:pointer;}
@@ -141,7 +141,8 @@
   <header>
     <div class="brand"><b>Digital Soseki 2</b><span>TEIタグ編集システム</span></div>
     <div class="tools">
-      <div class="fs"><button id="fsDown">A−</button><b id="fsVal">21px</b><button id="fsUp">A＋</button></div>
+      <div class="fs"><button id="fsDown">A−</button><b id="fsVal">18px</b><button id="fsUp">A＋</button></div>
+      <div class="fs"><button id="swDown">幅−</button><b id="swVal">760px</b><button id="swUp">幅＋</button></div>
       <label class="toggle" title="オン：指（タッチ）はスクロール、ペンで選択。"><input type="checkbox" id="penOnly" checked> ペンのみ</label>
       <button class="btn" id="btnSide">注釈</button>
       <button class="btn" id="btnUndo">元に戻す</button>
@@ -273,7 +274,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
   if(!best)return null; const s={tagId:best.id};for(const ea of(EDITABLE[ln]||[])){const v=el.getAttribute(ea);if(v)s[ea]=v;}return s; }
 
 /* ===== 状態 ===== */
-let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=21,jisMap=null;
+let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,jisMap=null;
 const canvas=$("#canvas");
 
 /* ===== 外字・整形・ルビ（従来スクリプト互換） ===== */
@@ -477,10 +478,10 @@ $("#sidePanel").addEventListener("input",e=>{
 });
 /* ===== 永続化（localStorage：自動保存＋復元） ===== */
 const LSKEY="teiTagger.v3";let saveTimer=null;
-function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,defs:DEFS,jisMap}));}catch(_){}}
+function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,defs:DEFS,jisMap}));}catch(_){}}
 function debouncedPersist(){clearTimeout(saveTimer);saveTimer=setTimeout(persist,400);}
 function restore(){try{const j=JSON.parse(localStorage.getItem(LSKEY)||"null");if(!j)return false;
-  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;
+  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;if(j.sheetWidth)sheetWidth=j.sheetWidth;
   if(typeof j.plain==="string"){plain=j.plain;spans=j.spans||[];seq=j.seq||(spans.reduce((m,s)=>Math.max(m,s.id),0)+1);return true;}}catch(_){}return false;}
 
 /* ===== ファイル読み込み（Shift-JIS / UTF-8 自動判定） ===== */
@@ -514,6 +515,11 @@ function applyFont(){document.documentElement.style.setProperty("--fs",fontSize+
 $("#fsUp").onclick=()=>{fontSize=Math.min(40,fontSize+1);applyFont();if(pendingRange)render();persist();};
 $("#fsDown").onclick=()=>{fontSize=Math.max(12,fontSize-1);applyFont();if(pendingRange)render();persist();};
 
+/* ===== 本文幅 ===== */
+function applySheetWidth(){document.getElementById("sheet").style.maxWidth=sheetWidth+"px";$("#swVal").textContent=sheetWidth+"px";}
+$("#swUp").onclick=()=>{sheetWidth=Math.min(1400,sheetWidth+60);applySheetWidth();persist();};
+$("#swDown").onclick=()=>{sheetWidth=Math.max(400,sheetWidth-60);applySheetWidth();persist();};
+
 /* ===== 各種結線 ===== */
 function warn(m){$("#warn").textContent=m;if(matchMedia("(max-width:980px)").matches)$("#side").classList.add("show");}
 function clearWarn(){$("#warn").textContent="";}
@@ -542,8 +548,8 @@ document.querySelectorAll(".modal").forEach(m=>m.addEventListener("pointerdown",
 addEventListener("resize",()=>{if(pendingRange){const r=globalRangeToDom(pendingRange[0],pendingRange[1]);if(r)drawOverlay(r);}});
 
 /* ===== 起動 ===== */
-rebuildDefs();buildPalette();applyFont();updateDefsStatus();
-if(restore()&&typeof plain==="string"&&plain.length){applyFont();$("#empty").style.display="none";$("#sheet").style.display="";render();}
+rebuildDefs();buildPalette();applyFont();applySheetWidth();updateDefsStatus();
+if(restore()&&typeof plain==="string"&&plain.length){applyFont();applySheetWidth();$("#empty").style.display="none";$("#sheet").style.display="";render();}
 
 const SAMPLE=`一
 
