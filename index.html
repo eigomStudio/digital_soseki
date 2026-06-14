@@ -106,10 +106,18 @@
   details.all summary::-webkit-details-marker{display:none;}
   details.all summary::before{content:"▸ ";font-size:16px;line-height:1;vertical-align:-.1em;}
   details.all[open] summary::before{content:"▾ ";font-size:16px;line-height:1;vertical-align:-.1em;}
-  #tagList{margin-top:18px;}
+  #tagList{margin-top:6px;}
   .mini{display:flex;align-items:center;gap:7px;padding:6px 4px;border-bottom:1px dashed var(--rule);font-size:12px;cursor:pointer;}
   .mini:hover{background:var(--paper-2);}.mini .sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
   .mini .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif);}
+  #annoFilter{margin-top:12px;}
+  .af-wrap h3{font-size:12px;letter-spacing:.1em;color:var(--ink-soft);margin:6px 2px 8px;}
+  .af-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
+  .af-tag{font-size:11px;padding:2px 8px;min-height:0;line-height:1.6;border-radius:10px;border:1px solid var(--rule);background:var(--paper-2);cursor:pointer;color:var(--ink);}
+  .af-tag.on{border-color:var(--shu);color:var(--shu);background:#fff0ee;}
+  .af-kw-row{display:flex;gap:4px;align-items:center;}
+  .af-kw{flex:1;font-family:var(--sans);font-size:12px;padding:4px 6px;border:1px solid var(--rule-strong);border-radius:7px;background:#fff;}
+  .af-count{font-size:11px;color:var(--ink-soft);margin-top:5px;}
 
   .seg-pop{position:fixed;z-index:60;background:var(--paper);border:1px solid var(--rule-strong);border-radius:12px;box-shadow:var(--shadow);width:300px;display:none;}
   .seg-pop.open{display:block;}
@@ -208,6 +216,7 @@
     <h3>タグの編集</h3>
     <div id="sidePanel"><div class="side-hint">本文をドラッグで選択 → パレットで確定。<br>色付き部分をタップすると、ここで編集できます。</div></div>
     <div id="bmSection"></div>
+    <div id="annoFilter"></div>
     <div id="tagList"></div>
   </aside>
 </div>
@@ -220,6 +229,7 @@
 
 <div class="modal" id="aboutModal"><div class="box" style="max-width:280px;text-align:center">
   <div class="bd" style="padding:28px 24px 8px;font-family:var(--sans)">
+    <img src="soseki_dot.png" alt="Digital Soseki" style="width:96px;height:96px;image-rendering:pixelated;display:block;margin:0 auto 12px" onerror="this.style.display='none'">
     <p style="font-size:16px;font-weight:600;margin:0 0 4px">Digital Soseki 2</p>
     <p style="font-size:13px;color:var(--ink-soft);margin:0 0 20px">バージョン <span id="aboutVer"></span></p>
     <p style="font-size:13px;margin:0 0 6px">© 2026 Murakami Eigo,<br>Nihon University</p>
@@ -347,6 +357,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
 
 /* ===== 状態 ===== */
 let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null,bookmarks=[],bmSeq=1,bmFilter="",currentFileName="";
+let annoFilterTags=new Set(),annoFilterKw="",annoKwTimer=null;
 const canvas=$("#canvas");
 
 /* ===== 外字・整形・ルビ（従来スクリプト互換） ===== */
@@ -414,7 +425,31 @@ function loadTEI(xml){const {plain:p,spans:sp,teiHeader:hdr}=parseTEI(xml);teiHe
 
 /* ===== 描画（セグメント方式：文字単位spanは作らない） ===== */
 function render(){renderText();renderBmOverlay();renderSide();renderBmList();renderTagList();if(pendingRange){const r=globalRangeToDom(pendingRange[0],pendingRange[1]);if(r)drawOverlay(r);else clearOverlay();}else clearOverlay();debouncedPersist();}
-function renderTagList(){const el=document.getElementById("tagList");if(el)el.innerHTML=allList();}
+function renderTagList(){
+  ensureAnnoFilter();
+  // タグ種類ボタンを再生成（SIMPLE変化に追従、staleエントリを除去）
+  const tagsEl=document.getElementById("afTags");
+  if(tagsEl){
+    const tagNames=[...new Set(Object.values(SIMPLE).map(d=>d.tag))];
+    for(const t of annoFilterTags)if(!tagNames.includes(t))annoFilterTags.delete(t);
+    tagsEl.innerHTML=tagNames.map(t=>`<button class="af-tag${annoFilterTags.has(t)?" on":""}" data-aftag="${escAttr(t)}">${escHtml(t)}</button>`).join("");
+  }
+  // 絞り込み
+  const allSpans=spans.filter(s=>s.tagId!=="ruby");
+  const total=allSpans.length;
+  let filtered=allSpans;
+  if(annoFilterTags.size>0)filtered=filtered.filter(s=>{const d=SIMPLE[s.tagId];return d&&annoFilterTags.has(d.tag);});
+  if(annoFilterKw.trim()){const kw=annoFilterKw.trim().toLowerCase();filtered=filtered.filter(s=>{const txt=plain.slice(s.start,s.end);const attrs=[(s.anas||[]).join(" "),s.ref||"",s.who||"",s.toWhom||"",s.type||""].join(" ");return(txt+" "+attrs).toLowerCase().includes(kw);});}
+  // 件数表示
+  const countEl=document.getElementById("afCount");if(countEl)countEl.textContent=`該当 ${filtered.length} 件 / 全 ${total} 件`;
+  // 一覧更新（details の開閉状態を保持）
+  const el=document.getElementById("tagList");if(!el)return;
+  if(!allSpans.length){el.innerHTML="";return;}
+  const wasOpen=(el.querySelector("details.all")||{}).open||false;
+  const sorted=[...filtered].sort((a,b)=>a.start-b.start||a.end-b.end);
+  const items=sorted.length?sorted.map(s=>`<div class="mini" data-go="${s.id}"><span class="sw" style="background:${spanColor(s)}"></span><span class="t">${escHtml(spanLabel(s))}：${escHtml(plain.slice(s.start,s.end).replace(/\n/g,'⏎')).slice(0,26)}</span></div>`).join(""):`<div style="font-size:13px;color:var(--ink-soft);padding:6px 4px">該当なし</div>`;
+  el.innerHTML=`<details class="all"${wasOpen?" open":""}><summary>すべてのタグ（${total}件）</summary>${items}</details>`;
+}
 function renderText(){const lines=[];let st=0;for(let i=0;i<=plain.length;i++)if(i===plain.length||plain[i]==="\n"){lines.push([st,i]);st=i+1;}
   canvas.innerHTML=lines.map(([ps,pe])=>renderPara(ps,pe)).join("");}
 function renderPara(ps,pe){const text=plain.slice(ps,pe);const local=[];
@@ -512,8 +547,6 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
       <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button></div>
     <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
   </div>`;}
-function allList(){const list=spans.filter(s=>s.tagId!=="ruby");if(!list.length)return"";const sorted=[...list].sort((a,b)=>a.start-b.start||a.end-b.end);
-  return `<details class="all"><summary>タグ一覧（${list.length}件・ルビ除く）</summary>`+sorted.map(s=>`<div class="mini" data-go="${s.id}"><span class="sw" style="background:${spanColor(s)}"></span><span class="t">${escHtml(spanLabel(s))}：${escHtml(plain.slice(s.start,s.end).replace(/\n/g,'⏎')).slice(0,26)}</span></div>`).join("")+`</details>`;}
 function scrollSel(){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;const p=[...canvas.querySelectorAll('p[data-ps]')].find(el=>+el.dataset.ps<=s.start&&s.start<+el.dataset.pe);if(p)p.scrollIntoView({block:"center",behavior:"smooth"});}
 
 /* ===== seg（ana）フローティング・チューザ：複数選択 ===== */
@@ -615,6 +648,15 @@ function exportDefsCsv(){const rows=[["色","タグ","ラベル","属性","属�
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));a.download="tag_defs.csv";a.click();URL.revokeObjectURL(a.href);}
 
+/* ===== タグフィルタ ===== */
+function ensureAnnoFilter(){
+  const el=document.getElementById("annoFilter");if(!el||el.children.length)return;
+  el.innerHTML=`<div class="af-wrap"><h3>タグを絞り込む</h3><div class="af-tags" id="afTags"></div><div class="af-kw-row"><input id="afKw" class="af-kw" type="search" placeholder="キーワード"><button class="btn sm ghost" id="afClear">クリア</button></div><div class="af-count" id="afCount"></div></div>`;
+  document.getElementById("afKw").addEventListener("input",e=>{clearTimeout(annoKwTimer);annoKwTimer=setTimeout(()=>{annoFilterKw=e.target.value;renderTagList();},200);});
+  document.getElementById("afClear").addEventListener("click",()=>{annoFilterKw="";const kw=document.getElementById("afKw");if(kw)kw.value="";renderTagList();});
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-aftag]");if(!b)return;const t=b.dataset.aftag;if(annoFilterTags.has(t))annoFilterTags.delete(t);else annoFilterTags.add(t);renderTagList();});
+}
+
 /* ===== ブックマーク ===== */
 function addBookmark(lo,hi){bookmarks.push({id:bmSeq++,start:lo,end:hi,memo:""});pendingRange=null;render();persist();}
 function removeBookmark(id){bookmarks=bookmarks.filter(b=>b.id!==id);render();persist();}
@@ -682,7 +724,7 @@ document.querySelectorAll(".modal").forEach(m=>m.addEventListener("pointerdown",
 addEventListener("resize",()=>{if(pendingRange){const r=globalRangeToDom(pendingRange[0],pendingRange[1]);if(r)drawOverlay(r);}renderBmOverlay();});
 
 /* ===== 起動 ===== */
-rebuildDefs();buildPalette();applyFont();applySheetWidth();updateDefsStatus();ensureBmSection();
+rebuildDefs();buildPalette();applyFont();applySheetWidth();updateDefsStatus();ensureBmSection();ensureAnnoFilter();
 if(restore()&&typeof plain==="string"&&plain.length){applyFont();applySheetWidth();$("#empty").style.display="none";$("#sheet").style.display="";render();}
 
 const SAMPLE=`一
