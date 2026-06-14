@@ -283,8 +283,12 @@
 
 <div class="modal" id="exportModal"><div class="box">
   <div class="hd"><b>TEI XML 書き出し</b><button class="btn ghost" data-close style="margin-left:auto">閉じる</button></div>
-  <div class="bd"><p class="hint">このまま保存すれば、再読み込みして編集を続けられます。</p><textarea id="exportText" readonly></textarea></div>
-  <div class="ft"><button class="btn ghost" data-close>閉じる</button><button class="btn primary" id="btnCopy">コピー</button></div>
+  <div class="bd">
+    <p class="hint">このまま保存すれば、再読み込みして編集を続けられます。</p>
+    <div class="field" style="margin-bottom:9px"><label>ファイル名</label><input id="exportFilename" type="text" style="font-family:ui-monospace,Menlo,monospace;font-size:13px"></div>
+    <textarea id="exportText" readonly></textarea>
+  </div>
+  <div class="ft"><button class="btn ghost" data-close>閉じる</button><button class="btn" id="btnCopy">コピー</button><button class="btn primary" id="btnDownload">ダウンロード</button></div>
 </div></div>
 
 <script>
@@ -341,7 +345,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
   if(!best)return null; const s={tagId:best.id};for(const ea of(EDITABLE[ln]||[])){const v=el.getAttribute(ea);if(v)s[ea]=v;}return s; }
 
 /* ===== 状態 ===== */
-let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null,bookmarks=[],bmSeq=1,bmFilter="";
+let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null,bookmarks=[],bmSeq=1,bmFilter="",currentFileName="";
 const canvas=$("#canvas");
 
 /* ===== 外字・整形・ルビ（従来スクリプト互換） ===== */
@@ -572,10 +576,10 @@ $("#sidePanel").addEventListener("input",e=>{
 document.getElementById("tagList").addEventListener("click",e=>{const go=e.target.closest("[data-go]");if(go){const s=spans.find(x=>x.id===+go.dataset.go);if(s){selectedSpanId=s.id;lastCover=[s.id];render();scrollSel();}}});
 /* ===== 永続化（localStorage：自動保存＋復元） ===== */
 const LSKEY="teiTagger.v3";let saveTimer=null;
-function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,teiHeader,defs:DEFS,jisMap,bookmarks,bmSeq}));}catch(_){}}
+function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,teiHeader,defs:DEFS,jisMap,bookmarks,bmSeq,currentFileName}));}catch(_){}}
 function debouncedPersist(){clearTimeout(saveTimer);saveTimer=setTimeout(persist,400);}
 function restore(){try{const j=JSON.parse(localStorage.getItem(LSKEY)||"null");if(!j)return false;
-  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;if(j.sheetWidth)sheetWidth=j.sheetWidth;if(j.teiHeader!==undefined)teiHeader=j.teiHeader;if(Array.isArray(j.bookmarks))bookmarks=j.bookmarks;if(j.bmSeq)bmSeq=j.bmSeq;
+  if(Array.isArray(j.defs)&&j.defs.length){DEFS=j.defs;}if(j.jisMap)jisMap=j.jisMap;if(j.fontSize)fontSize=j.fontSize;if(j.sheetWidth)sheetWidth=j.sheetWidth;if(j.teiHeader!==undefined)teiHeader=j.teiHeader;if(Array.isArray(j.bookmarks))bookmarks=j.bookmarks;if(j.bmSeq)bmSeq=j.bmSeq;if(j.currentFileName!==undefined)currentFileName=j.currentFileName;
   if(typeof j.plain==="string"){plain=j.plain;spans=j.spans||[];seq=j.seq||(spans.reduce((m,s)=>Math.max(m,s.id),0)+1);return true;}}catch(_){}return false;}
 
 /* ===== ファイル読み込み（Shift-JIS / UTF-8 自動判定） ===== */
@@ -635,12 +639,12 @@ function currentRaw(){const rb=spans.filter(s=>s.tagId==="ruby").sort((a,b)=>b.s
 
 $("#btnImport").onclick=$("#btnImport2").onclick=()=>{$("#fileTextStatus").textContent="";$("#importModal").classList.add("open");};
 $("#btnPickText").onclick=()=>$("#fileText").click();
-$("#fileText").onchange=e=>{const f=e.target.files[0];if(!f)return;readTextAuto(f,txt=>{$("#importText").value=txt;$("#fileTextStatus").textContent=`読込：${f.name}`;});};
-$("#btnClearText").onclick=()=>{$("#importText").value="";$("#fileTextStatus").textContent="";};
+$("#fileText").onchange=e=>{const f=e.target.files[0];if(!f)return;currentFileName=f.name;readTextAuto(f,txt=>{$("#importText").value=txt;$("#fileTextStatus").textContent=`読込：${f.name}`;});};
+$("#btnClearText").onclick=()=>{$("#importText").value="";$("#fileTextStatus").textContent="";currentFileName="";};
 $("#btnPickJis").onclick=()=>$("#fileJis").click();
 $("#fileJis").onchange=e=>{const f=e.target.files[0];if(!f)return;readTextAuto(f,txt=>{try{jisMap=parseJisTable(txt);$("#jisStatus").innerHTML=`外字テーブル：<b>${Object.keys(jisMap).length}件</b>（${escHtml(f.name)}）`;persist();}catch(_){$("#jisStatus").textContent="外字テーブル読込に失敗。";}});};
 $("#btnDoImport").onclick=()=>{const t=$("#importText").value;if(t.trim()){try{if(looksLikeTEI(t))loadTEI(t);else loadPlain(t,$("#chkStrip").checked);}catch(err){alert("読み込み失敗：\n"+err.message);return;}}$("#importModal").classList.remove("open");};
-$("#btnSample").onclick=()=>{loadPlain(SAMPLE,true);};
+$("#btnSample").onclick=()=>{currentFileName="";loadPlain(SAMPLE,true);};
 
 $("#btnDefs").onclick=()=>{updateDefsStatus();renderAnaCatList();$("#defsStatus").textContent="";$("#defsModal").classList.add("open");};
 $("#btnPickDefs").onclick=()=>$("#fileDefs").click();
@@ -663,8 +667,12 @@ $("#anaList").addEventListener("click",e=>{
 });
 
 $("#btnAbout").onclick=()=>{$("#aboutVer").textContent=APP_VERSION;$("#aboutModal").classList.add("open");};
-$("#btnExport").onclick=()=>{if(!plain){warn("先にテキストを読み込んでください。");return;}$("#exportText").value=exportTEI();$("#exportModal").classList.add("open");};
+$("#btnExport").onclick=()=>{if(!plain){warn("先にテキストを読み込んでください。");return;}
+  const today=new Date().toISOString().slice(0,10);
+  $("#exportFilename").value=currentFileName?currentFileName.replace(/\.[^.]*$/,"")+".xml":"tei_"+today+".xml";
+  $("#exportText").value=exportTEI();$("#exportModal").classList.add("open");};
 $("#btnCopy").onclick=()=>{const ta=$("#exportText");ta.select();navigator.clipboard&&navigator.clipboard.writeText(ta.value);$("#btnCopy").textContent="コピーしました";setTimeout(()=>$("#btnCopy").textContent="コピー",1200);};
+$("#btnDownload").onclick=()=>{let name=$("#exportFilename").value.trim()||"tei_"+new Date().toISOString().slice(0,10)+".xml";if(!/\.xml$/i.test(name))name+=".xml";const blob=new Blob([$("#exportText").value],{type:"application/xml;charset=utf-8"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href);};
 $("#btnUndo").onclick=()=>{if(undoStack.length){spans=JSON.parse(undoStack.pop());if(!spans.find(s=>s.id===selectedSpanId))selectedSpanId=null;pendingRange=null;clearWarn();render();}};
 $("#btnSide").onclick=()=>$("#side").classList.toggle("show");
 $("#btnSideClose").onclick=()=>$("#side").classList.remove("show");
