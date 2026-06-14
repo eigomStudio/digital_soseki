@@ -99,7 +99,8 @@
   .btn.wide{width:100%;}
   .span-card .row{display:flex;gap:8px;margin-top:11px;}
   .span-card .row .btn{flex:1;min-height:40px;font-size:13px;}
-  .danger{color:var(--shu);border-color:var(--shu);}
+  .btn.danger{color:var(--shu);border-color:var(--shu);}
+  .btn.danger:hover{background:#fdf1ec;}
   details.all{margin-top:0;}
   details.all summary{font-size:13px;color:var(--ink-soft);cursor:pointer;list-style:none;}
   details.all summary::-webkit-details-marker{display:none;}
@@ -224,11 +225,11 @@
     <p style="font-size:13px;margin:0 0 6px">© 2026 Murakami Eigo,<br>Nihon University</p>
     <p style="font-size:13px;margin:0"><a href="https://github.com/eigomStudio/digital_soseki" target="_blank" rel="noopener" style="color:var(--shu)">GitHub リポジトリ</a></p>
   </div>
-  <div style="display:flex;justify-content:flex-end;padding:6px 14px 10px"><button class="btn ghost" data-close>閉じる</button></div>
+  <div class="ft"><button class="btn" data-close>閉じる</button></div>
 </div></div>
 
 <div class="modal" id="importModal"><div class="box">
-  <div class="hd"><b>読み込み</b><button class="btn ghost" data-close style="margin-left:auto">閉じる</button></div>
+  <div class="hd"><b>読み込み</b></div>
   <div class="bd">
     <div class="toolrow">
       <button class="btn sm" id="btnPickText">本文／TEI ファイル…</button>
@@ -246,13 +247,13 @@
   </div>
   <div class="ft">
     <label class="chk"><input type="checkbox" id="chkStrip" checked> 青空文庫の整形（ヘッダ・注記除去／外字変換）</label>
-    <button class="btn ghost" data-close>キャンセル</button>
+    <button class="btn" data-close>閉じる</button>
     <button class="btn primary" id="btnDoImport">読み込む</button>
   </div>
 </div></div>
 
 <div class="modal" id="defsModal"><div class="box">
-  <div class="hd"><b>タグ定義</b><button class="btn ghost" data-close style="margin-left:auto">閉じる</button></div>
+  <div class="hd"><b>タグ定義</b></div>
   <div class="bd">
     <p class="hint">Excel(.xlsx) または CSV を読み込みます。想定列（1行目ヘッダー）：<b>色／タグ／ラベル／属性／属性値</b>。
       例：<code>#fad2e1, seg, 恋愛, ana, #love</code>／<code>#c9ddf2, persName, 登場人物, type, chr</code>。
@@ -261,6 +262,7 @@
     <div class="toolrow">
       <button class="btn sm" id="btnPickDefs">定義ファイルを選択…</button>
       <input type="file" id="fileDefs" accept=".xlsx,.xls,.csv" hidden>
+      <button class="btn sm" id="btnExportDefs">CSV に書き出し</button>
       <span class="status" id="defsStatus"></span>
     </div>
     <p class="hint">現在の定義：<span id="defsNow"></span></p>
@@ -275,9 +277,8 @@
     <div class="ana-scroll"><div id="anaList"></div></div>
   </div>
   <div class="ft">
-    <button class="btn ghost" id="btnExportDefs">CSV 書き出し</button>
-    <button class="btn ghost" id="btnResetDefs">内蔵の既定に戻す</button>
-    <button class="btn primary" data-close>閉じる</button>
+    <button class="btn" id="btnResetDefs" style="margin-right:auto">デフォルトに戻す</button>
+    <button class="btn" data-close>閉じる</button>
   </div>
 </div></div>
 
@@ -288,7 +289,7 @@
     <div class="field" style="margin-bottom:9px"><label>ファイル名</label><input id="exportFilename" type="text" style="font-family:ui-monospace,Menlo,monospace;font-size:13px"></div>
     <textarea id="exportText" readonly></textarea>
   </div>
-  <div class="ft"><button class="btn ghost" data-close>閉じる</button><button class="btn" id="btnCopy">コピー</button><button class="btn primary" id="btnDownload">ダウンロード</button></div>
+  <div class="ft"><button class="btn" data-close>閉じる</button><button class="btn primary" id="btnCopy">コピー</button><button class="btn primary" id="btnDownload">ダウンロード</button></div>
 </div></div>
 
 <script>
@@ -649,7 +650,7 @@ $("#btnSample").onclick=()=>{currentFileName="";loadPlain(SAMPLE,true);};
 $("#btnDefs").onclick=()=>{updateDefsStatus();renderAnaCatList();$("#defsStatus").textContent="";$("#defsModal").classList.add("open");};
 $("#btnPickDefs").onclick=()=>$("#fileDefs").click();
 $("#fileDefs").onchange=e=>{const f=e.target.files[0];if(f)readDefFile(f);};
-$("#btnResetDefs").onclick=()=>{DEFS=DEFAULT_DEFS.slice();rebuildDefs();buildPalette();render();persist();updateDefsStatus();renderAnaCatList();$("#defsStatus").textContent="内蔵の既定に戻しました。";};
+$("#btnResetDefs").onclick=()=>{DEFS=DEFAULT_DEFS.slice();rebuildDefs();buildPalette();render();persist();updateDefsStatus();renderAnaCatList();$("#defsStatus").textContent="デフォルトに戻しました。";};
 $("#btnExportDefs").onclick=exportDefsCsv;
 $("#btnAddAna").onclick=()=>{
   const color=$("#newAnaColor").value,label=$("#newAnaLabel").value.trim();
