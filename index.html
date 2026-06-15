@@ -43,6 +43,10 @@
   .palette{flex:1;display:flex;align-items:center;gap:6px;padding:8px 12px;overflow-x:auto;}
   .btn-panel-toggle{flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:46px;border:none;border-left:1px solid var(--rule);background:transparent;color:var(--ink-soft);cursor:pointer;padding:0;transition:color .15s,background .15s;}
   .btn-panel-toggle:hover{color:var(--ink);background:var(--paper-2);}
+  .btn-cont-toggle{flex:0 0 auto;display:inline-flex;align-items:center;border:1.5px solid var(--rule);background:var(--paper);border-radius:9px;padding:6px 10px;min-height:40px;color:var(--ink);white-space:nowrap;font-size:13px;cursor:pointer;margin:8px 4px 8px 8px;}
+  .btn-cont-toggle:hover{background:#fff;}
+  .btn-cont-toggle:active{transform:translateY(1px);}
+  .btn-cont-toggle.on{border-color:var(--shu);color:var(--shu);}
   .side-close{display:none;}
   .pcue{font-size:11px;color:var(--ink-soft);white-space:nowrap;padding-right:2px;}
   .pen{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--rule);background:var(--paper);border-radius:9px;padding:6px 10px 6px 7px;min-height:40px;color:var(--ink);white-space:nowrap;}
@@ -195,6 +199,7 @@
     </div>
   </header>
   <div class="pal-bar">
+    <button class="btn-cont-toggle" id="btnCont" title="連続選択モード（オンのとき複数回ドラッグした範囲を結合します）">連続</button>
     <nav class="palette" id="palette"></nav>
     <button class="btn-panel-toggle" id="btnSide" title="サイドパネル" aria-label="サイドパネル">
       <svg width="20" height="16" viewBox="0 0 20 16" fill="none" aria-hidden="true">
@@ -360,6 +365,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
 
 /* ===== 状態 ===== */
 let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null,bookmarks=[],bmSeq=1,bmFilter="",currentFileName="";
+let contMode=false;
 let annoFilterTags=new Set(),annoFilterKw="",annoKwTimer=null;
 const canvas=$("#canvas");
 
@@ -524,7 +530,12 @@ canvas.addEventListener("pointerup",e=>{if(!selecting)return;selecting=false;try
   if(!moved||g===downG){pendingRange=null;clearOverlay();selectByOffset(downG);}
   else{const lo=Math.min(downG,g),hi=Math.max(downG,g);
     if(redrawId!=null){applyRedraw(lo,hi);}
-    else if(hi>lo){pendingRange=[lo,hi];selectedSpanId=null;lastCover=[];renderSide();warn("パレットでタグを選んで確定。消しゴムで部分消去もできます。");}
+    else if(hi>lo){
+      if(contMode&&pendingRange){pendingRange=[Math.min(pendingRange[0],lo),Math.max(pendingRange[1],hi)];}
+      else{pendingRange=[lo,hi];}
+      selectedSpanId=null;lastCover=[];
+      const cr=globalRangeToDom(pendingRange[0],pendingRange[1]);if(cr)drawOverlay(cr);else clearOverlay();
+      renderSide();warn("パレットでタグを選んで確定。消しゴムで部分消去もできます。");}
     else{pendingRange=null;clearOverlay();selectByOffset(downG);}}
   downPt=null;});
 canvas.addEventListener("pointercancel",()=>{selecting=false;if(!pendingRange)clearOverlay();});
@@ -599,12 +610,13 @@ function buildPalette(){const pal=$("#palette");pal.innerHTML="";
   const sep=()=>{const d=document.createElement("div");d.className="sep";return d;};
   let first=true;
   for(const id in SIMPLE){const d=SIMPLE[id];let chip;
-    if(d.channel==="underline")chip=`<span class="chip" style="text-decoration:underline;text-decoration-color:var(--shu-soft);text-underline-offset:2px">あ</span>`;
-    else if(d.channel==="italic")chip=`<span class="chip" style="font-style:italic">あ</span>`;
-    else chip=`<span class="chip" style="background:${d.color}">あ</span>`;
+    if(d.channel==="underline")chip=`<span class="chip" style="text-decoration:underline;text-decoration-color:var(--shu-soft);text-underline-offset:2px"></span>`;
+    else if(d.channel==="italic")chip=`<span class="chip" style="font-style:italic"></span>`;
+    else chip=`<span class="chip" style="background:${d.color}"></span>`;
     pal.appendChild(mk(`${chip}<span class="lbl">${escHtml(d.label)}</span>`,id));}
   for(const el in ANAG){pal.appendChild(sep());pal.appendChild(mk(`<span class="chip ana"></span><span class="lbl">${el==="seg"?"主題":el} ▾</span>`,"@"+el,"ana"));}
   pal.appendChild(sep());pal.appendChild(mk(`<span class="chip"></span><span class="lbl">消しゴム</span>`,"__eraser","eraser"));}
+document.getElementById("btnCont").addEventListener("click",()=>{contMode=!contMode;document.getElementById("btnCont").classList.toggle("on",contMode);});
 $("#palette").addEventListener("click",e=>{const b=e.target.closest(".pen");if(!b)return;const data=b.dataset.apply;
   if(!pendingRange){warn("先に本文をドラッグして選択してください。");return;}const[lo,hi]=pendingRange;
   if(data==="__eraser"){eraseRange(lo,hi);pendingRange=null;}
