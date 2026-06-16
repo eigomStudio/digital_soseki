@@ -161,15 +161,17 @@
   .ana-row .btn{margin-left:auto;}
   #bmOverlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:3;}
   .bmrect{position:absolute;background:rgba(200,80,50,.18);border-radius:2px;box-shadow:0 0 0 1.5px rgba(200,80,50,.45);pointer-events:none;}
-  .bm-section{margin-top:4px;}
+  .bm-section{margin-top:8px;background:#fdf5f3;border-radius:8px;padding:4px 8px 8px;border-left:3px solid rgba(162,59,44,.28);}
   .bm-filter-row{display:flex;align-items:center;gap:6px;margin-bottom:8px;}
   .bm-filter{flex:1;font-family:var(--sans);font-size:13px;border:1px solid var(--rule-strong);border-radius:7px;padding:5px 8px;}
-  .bm-item{border:1px solid var(--rule);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:#fff;}
-  .bm-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
-  .bm-ex{font-size:12px;color:var(--ink-soft);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif);cursor:pointer;}
-  .bm-ex:hover{color:var(--ink);text-decoration:underline dotted;}
+  .bm-item{padding:5px 3px;border-bottom:1px dashed var(--rule);cursor:pointer;}
+  .bm-item:hover{background:var(--paper-2);}
+  .bm-row{display:flex;align-items:center;gap:5px;}
+  .bm-ex{font-size:12px;font-family:var(--serif);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);}
+  .bm-ex:hover{color:var(--shu);}
+  .bm-memo-text{font-size:11px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .c.bm-hl{background:var(--shu);color:#fff;border-radius:2px;}
-  .bm-memo{width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;border:1px solid var(--rule);border-radius:6px;padding:4px 6px;resize:none;}
+  .bm-memo{width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;border:1px solid var(--rule);border-radius:6px;padding:4px 6px;resize:none;margin-top:4px;}
   .toolrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:9px;}
   .status{font-size:12px;color:var(--ink-soft);}.status b{color:var(--shu);}
   .chk{display:flex;align-items:center;gap:8px;font-size:13px;margin-right:auto;}
@@ -366,6 +368,7 @@ function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ru
 /* ===== 状態 ===== */
 let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,redrawId=null,fontSize=18,sheetWidth=760,teiHeader=null,jisMap=null,bookmarks=[],bmSeq=1,bmFilter="",currentFileName="";
 let contMode=false;
+let openBmMemoId=null;
 let annoFilterTags=new Set(),annoFilterKw="",annoKwTimer=null;
 const canvas=$("#canvas");
 
@@ -409,7 +412,7 @@ function parseTEI(xml){const doc=new DOMParser().parseFromString(xml,"applicatio
   walk(root);out=out.replace(/\n+$/,"");return{plain:out,spans:sp,teiHeader:hdr};}
 
 /* ===== 読み込み・状態セット ===== */
-function setState(p,sp){plain=p;spans=sp;seq=(sp.reduce((m,s)=>Math.max(m,s.id),0))+1;selectedSpanId=null;lastCover=[];pendingRange=null;redrawId=null;bookmarks=[];bmSeq=1;
+function setState(p,sp){plain=p;spans=sp;seq=(sp.reduce((m,s)=>Math.max(m,s.id),0))+1;selectedSpanId=null;lastCover=[];pendingRange=null;redrawId=null;bookmarks=[];bmSeq=1;openBmMemoId=null;
   $("#empty").style.display="none";$("#sheet").style.display="";clearWarn();render();persist();}
 function loadPlain(raw,strip){
   if(!strip){const {plain:p,rubies}=parseRuby(raw.replace(/\r\n?/g,"\n"));let id=1;teiHeader=null;setState(p,rubies.map(r=>({id:id++,tagId:"ruby",start:r.start,end:r.end,reading:r.reading})));return;}
@@ -635,6 +638,7 @@ $("#sidePanel").addEventListener("click",e=>{
   if(e.target.closest("[data-editana]")){const s=spans.find(x=>x.id===selectedSpanId);if(s&&ANAG[s.tagId])openSegChooser(s.tagId,{mode:"edit",id:s.id},s.anas||[]);return;}
 });
 $("#sidePanel").addEventListener("input",e=>{
+  const bmta=e.target.closest("[data-bmid]");if(bmta){const b=bookmarks.find(x=>x.id===+bmta.dataset.bmid);if(b){b.memo=bmta.value;debouncedPersist();}return;}
   const inp=e.target.closest("[data-attr]");if(inp){const s=spans.find(x=>x.id===selectedSpanId);if(s){s[inp.dataset.attr]=inp.value;debouncedPersist();}return;}
   const sel=e.target.closest("[data-type]");if(sel){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;const v=sel.value;
     if(v[0]==="@"){openSegChooser(v.slice(1),{mode:"edit",id:s.id},s.anas||[]);}
@@ -693,11 +697,11 @@ function ensureAnnoFilter(){
 }
 
 /* ===== ブックマーク ===== */
-function addBookmark(lo,hi){bookmarks.push({id:bmSeq++,start:lo,end:hi,memo:""});pendingRange=null;render();persist();}
-function removeBookmark(id){bookmarks=bookmarks.filter(b=>b.id!==id);render();persist();}
+function addBookmark(lo,hi){const id=bmSeq++;bookmarks.push({id,start:lo,end:hi,memo:""});openBmMemoId=id;pendingRange=null;render();persist();setTimeout(()=>{const ta=document.querySelector(`[data-bmid="${id}"]`);if(ta){ta.scrollIntoView({block:"nearest",behavior:"smooth"});ta.focus();}},30);}
+function removeBookmark(id){if(openBmMemoId===id)openBmMemoId=null;bookmarks=bookmarks.filter(b=>b.id!==id);render();persist();}
 function renderBmOverlay(){}
-function ensureBmSection(){const sec=document.getElementById("bmSection");if(!sec||document.getElementById("bmListEl"))return;sec.innerHTML=`<div class="bm-section"><h3>ブックマーク</h3><div class="bm-filter-row"><input id="bmFilterInput" class="bm-filter" type="search" placeholder="メモで絞り込み"><span id="bmCount" style="font-size:12px;color:var(--ink-soft)"></span></div><div id="bmListEl"></div></div>`;document.getElementById("bmFilterInput").addEventListener("input",e=>{bmFilter=e.target.value;renderBmList();});sec.addEventListener("click",e=>{const rb=e.target.closest("[data-rmbm]");if(rb){removeBookmark(+rb.dataset.rmbm);return;}const gb=e.target.closest("[data-gotobm]");if(gb){scrollToBm(+gb.dataset.gotobm);return;}});sec.addEventListener("input",e=>{const mi=e.target.closest("[data-bmid]");if(!mi)return;const b=bookmarks.find(x=>x.id===+mi.dataset.bmid);if(b){b.memo=mi.value;debouncedPersist();}});}
-function renderBmList(){const el=document.getElementById("bmListEl");if(!el)return;const f=bmFilter.trim().toLowerCase();const list=f?bookmarks.filter(b=>(b.memo||"").toLowerCase().includes(f)):bookmarks;const cnt=document.getElementById("bmCount");if(cnt)cnt.textContent=`${list.length}件`;if(!list.length){el.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);padding:4px 0">ブックマークはありません。</div>`;return;}const sorted=[...list].sort((a,b)=>a.start-b.start);el.innerHTML=sorted.map(b=>{const txt=plain.slice(b.start,b.end).replace(/\n/g,"⏎").slice(0,30);return `<div class="bm-item"><div class="bm-row"><span class="bm-ex" data-gotobm="${b.id}">${escHtml(txt)}</span><button class="btn sm ghost" data-rmbm="${b.id}">×</button></div><textarea class="bm-memo" rows="2" placeholder="メモ…" data-bmid="${b.id}">${escHtml(b.memo||"")}</textarea></div>`;}).join("");}
+function ensureBmSection(){const sec=document.getElementById("bmSection");if(!sec||document.getElementById("bmListEl"))return;sec.innerHTML=`<div class="bm-section"><h3>ブックマーク</h3><div class="bm-filter-row"><input id="bmFilterInput" class="bm-filter" type="search" placeholder="メモで絞り込み"><span id="bmCount" style="font-size:12px;color:var(--ink-soft)"></span></div><div id="bmListEl"></div></div>`;document.getElementById("bmFilterInput").addEventListener("input",e=>{bmFilter=e.target.value;renderBmList();});sec.addEventListener("click",e=>{const rb=e.target.closest("[data-rmbm]");if(rb){removeBookmark(+rb.dataset.rmbm);return;}const cb=e.target.closest("[data-closebm]");if(cb){openBmMemoId=null;renderBmList();return;}const gb=e.target.closest("[data-gotobm]");if(gb)scrollToBm(+gb.dataset.gotobm);const item=e.target.closest("[data-bm-item]");if(item){const id=+item.dataset.bmItem;if(openBmMemoId!==id){openBmMemoId=id;renderBmList();setTimeout(()=>{const ta=document.querySelector(`[data-bmid="${id}"]`);if(ta)ta.focus();},20);}}});sec.addEventListener("input",e=>{const mi=e.target.closest("[data-bmid]");if(!mi)return;const b=bookmarks.find(x=>x.id===+mi.dataset.bmid);if(b){b.memo=mi.value;debouncedPersist();}});}
+function renderBmList(){const el=document.getElementById("bmListEl");if(!el)return;const f=bmFilter.trim().toLowerCase();const list=f?bookmarks.filter(b=>(b.memo||"").toLowerCase().includes(f)):bookmarks;const cnt=document.getElementById("bmCount");if(cnt)cnt.textContent=`${list.length}件`;if(!list.length){el.innerHTML=`<div style="font-size:13px;color:var(--ink-soft);padding:4px 0">ブックマークはありません。</div>`;return;}const sorted=[...list].sort((a,b)=>a.start-b.start);el.innerHTML=sorted.map(b=>{const txt=plain.slice(b.start,b.end).replace(/\n/g,"⏎").slice(0,30);const isOpen=openBmMemoId===b.id;const extra=isOpen?`<textarea class="bm-memo" rows="2" placeholder="メモ…" data-bmid="${b.id}">${escHtml(b.memo||"")}</textarea><button class="btn sm ghost" data-closebm="1" style="margin-top:3px;padding:1px 8px;min-height:0;font-size:11px">完了</button>`:b.memo?`<div class="bm-memo-text">${escHtml(b.memo.slice(0,40))}</div>`:"";return `<div class="bm-item" data-bm-item="${b.id}"><div class="bm-row"><span class="bm-ex" data-gotobm="${b.id}">${escHtml(txt)}</span><button class="btn sm ghost" data-rmbm="${b.id}" style="flex-shrink:0;padding:2px 5px;min-height:0;line-height:1.4">×</button></div>${extra}</div>`;}).join("");}
 function scrollToBm(id){const b=bookmarks.find(x=>x.id===id);if(!b)return;const p=[...canvas.querySelectorAll('p[data-ps]')].find(el=>+el.dataset.ps<=b.start&&b.start<+el.dataset.pe);if(p)p.scrollIntoView({block:"center",behavior:"smooth"});}
 
 /* ===== 文字サイズ ===== */
