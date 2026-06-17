@@ -61,15 +61,19 @@
   .sheet{max-width:760px;margin:0 auto;background:var(--paper);border:1px solid var(--rule-strong);border-radius:6px;box-shadow:var(--shadow);padding:36px 42px;}
   .cwrap{position:relative;}
   #canvas{font-family:var(--serif);font-size:var(--fs);line-height:2.1;color:var(--ink);letter-spacing:.01em;
-    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:pan-y;cursor:text;}
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:pan-y;cursor:text;padding-left:2.5rem;}
+  .para-wrap{position:relative;}
+  .para-num{position:absolute;left:-2.5rem;width:2.4rem;top:0;text-align:right;padding-right:4px;font-size:.65em;line-height:calc(2.1/0.65*1em);color:var(--ink-soft);font-family:var(--sans);user-select:none;pointer-events:none;}
   #canvas p{margin:0 0 .25em;white-space:pre-wrap;min-height:1em;}
   #canvas .c{border-radius:2px;}
   #canvas ruby.rb{ruby-position:over;}
   #canvas ruby.rb rt{font-size:.42em;color:var(--ink-soft);font-family:var(--sans);line-height:1;user-select:none;}
   .c.uline{text-decoration:underline;text-decoration-color:var(--shu-soft);text-decoration-thickness:1.5px;text-underline-offset:3px;}
   .c.ital{font-style:italic;}
-  .c.nested{box-shadow:inset 0 2px 0 var(--nest,rgba(0,0,0,.22));}
+  .c.nested{border:2px solid var(--nest,rgba(0,0,0,.22));}
   .c.sel{box-shadow:inset 0 -2.5px 0 var(--shu),inset 0 2.5px 0 var(--shu)!important;}
+  .c.bulk-hl{box-shadow:inset 0 0 0 1000px #b3d9ff!important;transition:box-shadow .35s ease;}
+  .c.bulk-hl.flash{box-shadow:inset 0 0 0 1000px #ffe066!important;}
   #overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:4;}
   .selrect{position:absolute;background:rgba(162,59,44,.22);border-radius:2px;}
 
@@ -114,6 +118,17 @@
   .mini{display:flex;align-items:center;gap:7px;padding:6px 4px;border-bottom:1px dashed var(--rule);font-size:12px;cursor:pointer;}
   .mini:hover{background:var(--paper-2);}.mini .sw{width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
   .mini .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--serif);}
+  .mini .pn{font-size:.85em;color:var(--ink-soft);font-family:var(--sans);min-width:2em;text-align:right;flex-shrink:0;}
+  .bulk-panel{margin-top:6px;}
+  .bulk-hdr{font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
+  .bulk-row{cursor:pointer;}
+  .bulk-row.existing{background:#fdf1ec;}
+  .bulk-row.conflict{background:#f1ece0;color:var(--ink-soft);cursor:default;text-decoration:line-through;}
+  .bulk-row .t{cursor:pointer;}
+  .bulk-modes{margin:8px 2px;font-size:12.5px;line-height:1.8;}
+  .bulk-modes label{display:flex;align-items:center;gap:6px;}
+  .bulk-btns{display:flex;gap:6px;margin-bottom:6px;}
+  .bulk-btns .btn{flex:1;}
   #annoFilter{margin-top:12px;}
   .af-wrap h3{font-size:12px;letter-spacing:.1em;color:var(--ink-soft);margin:6px 2px 8px;}
   .af-tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
@@ -357,7 +372,7 @@ function spanColor(s){ if(s.tagId==="ruby")return"#efe9da"; const g=ANAG[s.tagId
 function spanChannel(s){ if(s.tagId==="ruby")return"ruby"; if(ANAG[s.tagId])return"bg"; const d=SIMPLE[s.tagId];return d?d.channel:"bg"; }
 function spanLabel(s){ if(s.tagId==="ruby")return"ルビ"; const g=ANAG[s.tagId]; if(g){const ls=(s.anas||[]).map(v=>(g.find(c=>c.val===v)||{}).label||v);return (s.tagId==="seg"?"主題":s.tagId)+"："+(ls.join("・")||"—");} const d=SIMPLE[s.tagId];return d?d.label:s.tagId; }
 function buildOC(s){ if(s.tagId==="ruby")return{open:"<ruby>",close:`<rt>${escHtml(s.reading||"")}</rt></ruby>`,depth:100};
-  const g=ANAG[s.tagId]; if(g){const ana=(s.anas||[]).join(" ")||"#uncategorized";return{open:`<${s.tagId} ana="${escAttr(ana)}">`,close:`</${s.tagId}>`,depth:0};}
+  const g=ANAG[s.tagId]; if(g){const ana=(s.anas||[]).join(" ")||"#uncategorized";return{open:`<${s.tagId} ana="${escAttr(ana)}">`,close:`</${s.tagId}>`,depth:1};}
   const d=SIMPLE[s.tagId]; if(!d)return{open:"",close:"",depth:0}; let a=d.attr?` ${d.attr}="${escAttr(d.val)}"`:"";
   for(const ea of (EDITABLE[d.tag]||[]))if(s[ea])a+=` ${ea}="${escAttr(s[ea])}"`; return{open:`<${d.tag}${a}>`,close:`</${d.tag}>`,depth:0}; }
 function tagIdFromEl(el){ const ln=el.localName; if(ln==="ruby")return{tagId:"ruby"};
@@ -370,6 +385,9 @@ let plain="",spans=[],seq=1,selectedSpanId=null,lastCover=[],pendingRange=null,r
 let contMode=false;
 let openBmMemoId=null;
 let annoFilterTags=new Set(),annoFilterKw="",annoKwTimer=null;
+let bulkState=null;
+let paraIndex=new Map(); // ps → 段落番号（1始まり）。renderText() で構築。
+let bulkJumpRange=null,bulkFlashActive=false,bulkFlashTimer=null;
 const canvas=$("#canvas");
 
 /* ===== 外字・整形・ルビ（従来スクリプト互換） ===== */
@@ -437,8 +455,10 @@ function loadTEI(xml){const {plain:p,spans:sp,teiHeader:hdr}=parseTEI(xml);teiHe
 
 /* ===== 描画（セグメント方式：文字単位spanは作らない） ===== */
 function render(){renderText();renderBmOverlay();renderSide();renderBmList();renderTagList();if(pendingRange){const r=globalRangeToDom(pendingRange[0],pendingRange[1]);if(r)drawOverlay(r);else clearOverlay();}else clearOverlay();debouncedPersist();}
+function paraNumOf(pos){let best=1;for(const[ps,n]of paraIndex){if(ps>pos)break;best=n;}return best;}
 function renderTagList(){
   ensureAnnoFilter();
+  if(bulkState){const el=document.getElementById("tagList");if(el)el.innerHTML=buildBulkHtml();return;}
   // タグ種類ボタンを再生成（SIMPLE変化に追従、staleエントリを除去）
   const tagsEl=document.getElementById("afTags");
   if(tagsEl){
@@ -477,17 +497,74 @@ function renderTagList(){
   const wasOpen=(el.querySelector("details.all")||{}).open||false;
   const shouldOpen=wasOpen||filterActive;
   const sorted=[...filtered].sort((a,b)=>a.start-b.start||a.end-b.end);
-  const items=sorted.length?sorted.map(s=>`<div class="mini" data-go="${s.id}"><span class="sw" style="background:${spanColor(s)}"></span><span class="t">${escHtml(spanLabel(s))}：${escHtml(plain.slice(s.start,s.end).replace(/\n/g,'⏎')).slice(0,26)}</span></div>`).join(""):`<div style="font-size:13px;color:var(--ink-soft);padding:6px 4px">該当なし</div>`;
+  const items=sorted.length?sorted.map(s=>`<div class="mini" data-go="${s.id}"><span class="pn">${paraNumOf(s.start)}</span><span class="sw" style="background:${spanColor(s)}"></span><span class="t">${escHtml(spanLabel(s))}：${escHtml(plain.slice(s.start,s.end).replace(/\n/g,'⏎')).slice(0,26)}</span></div>`).join(""):`<div style="font-size:13px;color:var(--ink-soft);padding:6px 4px">該当なし</div>`;
   el.innerHTML=`<details class="all"${shouldOpen?" open":""}><summary>すべての注釈（${total}件）</summary>${items}</details>`;
 }
+/* ===== タグの一括設定 ===== */
+function openBulkPanel(){const sel=spans.find(s=>s.id===selectedSpanId);if(!sel||sel.tagId==="ruby")return;
+  const word=plain.slice(sel.start,sel.end);if(!word)return;
+  clearBulkHl();
+  const def=SIMPLE[sel.tagId];const attrs={};
+  if(def)for(const ea of(EDITABLE[def.tag]||[]))if(sel[ea]!==undefined)attrs[ea]=sel[ea];
+  const nonRuby=spans.filter(s=>s.tagId!=="ruby");
+  const matches=[];
+  for(let i=0;i+word.length<=plain.length;i++){
+    if(plain.slice(i,i+word.length)!==word)continue;
+    const a=i,b=i+word.length;
+    const sameRange=nonRuby.filter(s=>s.start===a&&s.end===b);
+    const others=nonRuby.filter(s=>!(s.start===a&&s.end===b));
+    const conflict=others.some(s=>crosses({start:a,end:b},s));
+    const existingLabel=sameRange.map(s=>spanLabel(s)).join("・");
+    matches.push({start:a,end:b,conflict,existing:sameRange.length>0,existingLabel,checked:!conflict&&sameRange.length===0,source:a===sel.start&&b===sel.end});
+  }
+  bulkState={tagId:sel.tagId,anas:sel.anas?sel.anas.slice():undefined,attrs,word,applyMode:"nest",matches};
+  render();}
+function buildBulkHtml(){const st=bulkState;
+  const rows=st.matches.length?st.matches.map((m,i)=>{
+    const cls=m.conflict?" conflict":m.existing?" existing":"";
+    const srcBadge=m.source?`<span style="font-size:.85em;color:var(--shu-soft);margin-left:4px">選択中</span>`:"";
+    const lbl=m.conflict?"（交差のためスキップ）":m.existing?`（既存：${escHtml(m.existingLabel)}）`:"";
+    return `<div class="mini bulk-row${cls}" data-bulk-idx="${i}"><input type="checkbox" data-bulk-chk="${i}" ${m.checked?"checked":""} ${m.conflict?"disabled":""}><span class="pn">${paraNumOf(m.start)}</span><span class="t">${escHtml(plain.slice(m.start,m.end).replace(/\n/g,"⏎"))}${lbl}${srcBadge}</span></div>`;
+  }).join(""):`<div style="font-size:13px;color:var(--ink-soft);padding:6px 4px">本文中に他の一致箇所はありません。</div>`;
+  return `<div class="bulk-panel">
+    <div class="bulk-hdr">「${escHtml(st.word)}」と一致する箇所（${st.matches.length}件）</div>
+    ${rows}
+    <div class="bulk-modes">
+      <label><input type="radio" name="bulkMode" value="nest" ${st.applyMode==="nest"?"checked":""}> 入れ子（構造タグが外、分析タグが内）</label>
+      <label><input type="radio" name="bulkMode" value="overwrite" ${st.applyMode==="overwrite"?"checked":""}> 上書き</label>
+    </div>
+    <div class="bulk-btns"><button class="btn sm" data-bulk-all>全選択</button><button class="btn sm" data-bulk-none>全解除</button></div>
+    <div class="bulk-btns"><button class="btn" data-bulk-cancel>キャンセル</button><button class="btn primary" data-bulk-ok>確定</button></div>
+  </div>`;}
+function bulkJump(a,b){clearTimeout(bulkFlashTimer);bulkJumpRange={start:a,end:b};
+  bulkFlashActive=true;renderText();bulkFlashActive=false;
+  const p=[...canvas.querySelectorAll('p[data-ps]')].find(el=>+el.dataset.ps<=a&&a<+el.dataset.pe);if(p)p.scrollIntoView({block:"center",behavior:"smooth"});
+  bulkFlashTimer=setTimeout(()=>{canvas.querySelectorAll('.c.bulk-hl.flash').forEach(el=>el.classList.remove("flash"));},800);}
+function clearBulkHl(){bulkJumpRange=null;clearTimeout(bulkFlashTimer);bulkFlashTimer=null;}
+function applyBulk(){if(!bulkState)return;const st=bulkState;
+  const targets=st.matches.filter(m=>m.checked&&!m.conflict);
+  if(!targets.length){bulkState=null;clearBulkHl();render();return;}
+  pushUndo();
+  for(const m of targets){
+    if(st.applyMode==="overwrite")spans=spans.filter(s=>!(s.tagId!=="ruby"&&s.start===m.start&&s.end===m.end));
+    const cand={id:seq,tagId:st.tagId,start:m.start,end:m.end};
+    if(st.anas)cand.anas=st.anas.slice();
+    for(const k in st.attrs)cand[k]=st.attrs[k];
+    if(spans.some(s=>crosses(cand,s)))continue;
+    spans.push(cand);seq++;
+  }
+  bulkState=null;clearBulkHl();clearWarn();render();}
 function renderText(){const lines=[];let st=0;for(let i=0;i<=plain.length;i++)if(i===plain.length||plain[i]==="\n"){lines.push([st,i]);st=i+1;}
-  canvas.innerHTML=lines.map(([ps,pe])=>renderPara(ps,pe)).join("");}
+  paraIndex.clear();
+  canvas.innerHTML=lines.map(([ps,pe],idx)=>{paraIndex.set(ps,idx+1);return`<div class="para-wrap"><span class="para-num" aria-hidden="true">${idx+1}</span>${renderPara(ps,pe)}</div>`;}).join("");}
 function renderPara(ps,pe){const text=plain.slice(ps,pe);const local=[];
   for(const s of spans){const a=Math.max(s.start,ps),b=Math.min(s.end,pe);if(b<=a)continue;local.push({s,a:a-ps,b:b-ps});}
   const bmLocal=bookmarks.map(b=>({a:Math.max(b.start,ps)-ps,b:Math.min(b.end,pe)-ps})).filter(l=>l.b>l.a&&l.a<text.length);
+  const bjLocal=bulkJumpRange?[{a:Math.max(bulkJumpRange.start,ps)-ps,b:Math.min(bulkJumpRange.end,pe)-ps}].filter(l=>l.b>l.a&&l.a<text.length):[];
   const cuts=new Set([0,text.length]);
   for(const l of local){cuts.add(l.a);cuts.add(l.b);}
   for(const l of bmLocal){cuts.add(Math.max(0,l.a));cuts.add(Math.min(text.length,l.b));}
+  for(const l of bjLocal){cuts.add(Math.max(0,l.a));cuts.add(Math.min(text.length,l.b));}
   const pts=[...cuts].sort((x,y)=>x-y);
   const rubies=local.filter(l=>l.s.tagId==="ruby");
   let out=`<p data-ps="${ps}" data-pe="${pe}">`;if(text.length===0)return out+"</p>";
@@ -501,6 +578,7 @@ function renderPara(ps,pe){const text=plain.slice(ps,pe);const local=[];
     if(cover.some(l=>spanChannel(l.s)==="underline"))cls+=" uline";
     if(cover.some(l=>spanChannel(l.s)==="italic"))cls+=" ital";
     if(selectedSpanId!=null&&cover.some(l=>l.s.id===selectedSpanId))cls+=" sel";
+    if(bjLocal.some(l=>l.a<=a&&b<=l.b))cls+=" bulk-hl"+(bulkFlashActive?" flash":"");
     const seg=text.slice(a,b);
     if(cls||stl)out+=`<span class="c${cls}"${stl?` style="${stl}"`:""}>${escHtml(seg)}</span>`;else out+=escHtml(seg);
     const rC=rubies.find(r=>r.b===b);if(rC)out+=`<rt>${escHtml(rC.s.reading||"")}</rt></ruby>`;}
@@ -580,6 +658,7 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
       <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
       <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
       <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button></div>
+    <button class="btn sm wide" data-bulk="1" style="margin-top:8px">タグを一括設定</button>
     <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
   </div>`;}
 function scrollSel(){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;const p=[...canvas.querySelectorAll('p[data-ps]')].find(el=>+el.dataset.ps<=s.start&&s.start<+el.dataset.pe);if(p)p.scrollIntoView({block:"center",behavior:"smooth"});}
@@ -613,8 +692,8 @@ function buildPalette(){const pal=$("#palette");pal.innerHTML="";
   const sep=()=>{const d=document.createElement("div");d.className="sep";return d;};
   let first=true;
   for(const id in SIMPLE){const d=SIMPLE[id];let chip;
-    if(d.channel==="underline")chip=`<span class="chip" style="text-decoration:underline;text-decoration-color:var(--shu-soft);text-underline-offset:2px"></span>`;
-    else if(d.channel==="italic")chip=`<span class="chip" style="font-style:italic"></span>`;
+    if(d.channel==="underline")chip=`<span class="chip" style="text-decoration:underline;text-decoration-color:var(--shu-soft);text-underline-offset:2px">あ</span>`;
+    else if(d.channel==="italic")chip=`<span class="chip" style="font-style:italic">あ</span>`;
     else chip=`<span class="chip" style="background:${d.color}"></span>`;
     pal.appendChild(mk(`${chip}<span class="lbl">${escHtml(d.label)}</span>`,id));}
   for(const el in ANAG){pal.appendChild(sep());pal.appendChild(mk(`<span class="chip ana"></span><span class="lbl">${el==="seg"?"主題":el} ▾</span>`,"@"+el,"ana"));}
@@ -636,6 +715,7 @@ $("#sidePanel").addEventListener("click",e=>{
   const adj=e.target.closest("[data-adj]");if(adj){const a=adj.dataset.adj;nudge(a[0]==="s"?"start":"end",(a==="sw"||a==="ew")?-1*(a[0]==="s"?1:-1):(a[0]==="s"?1:-1));return;}
   if(e.target.closest("[data-redraw]")){redrawId=selectedSpanId;warn("引き直す範囲を本文上でなぞってください。");return;}
   if(e.target.closest("[data-editana]")){const s=spans.find(x=>x.id===selectedSpanId);if(s&&ANAG[s.tagId])openSegChooser(s.tagId,{mode:"edit",id:s.id},s.anas||[]);return;}
+  if(e.target.closest("[data-bulk]")){openBulkPanel();return;}
 });
 $("#sidePanel").addEventListener("input",e=>{
   const bmta=e.target.closest("[data-bmid]");if(bmta){const b=bookmarks.find(x=>x.id===+bmta.dataset.bmid);if(b){b.memo=bmta.value;debouncedPersist();}return;}
@@ -644,7 +724,22 @@ $("#sidePanel").addEventListener("input",e=>{
     if(v[0]==="@"){openSegChooser(v.slice(1),{mode:"edit",id:s.id},s.anas||[]);}
     else{pushUndo();s.tagId=v;delete s.anas;delete s.ref;delete s.who;delete s.toWhom;delete s.type;render();}return;}
 });
-document.getElementById("tagList").addEventListener("click",e=>{const go=e.target.closest("[data-go]");if(go){const s=spans.find(x=>x.id===+go.dataset.go);if(s){selectedSpanId=s.id;lastCover=[s.id];render();scrollSel();}}});
+document.getElementById("tagList").addEventListener("click",e=>{
+  if(bulkState){
+    if(e.target.closest("[data-bulk-all]")){bulkState.matches.forEach(m=>{if(!m.conflict)m.checked=true;});renderTagList();return;}
+    if(e.target.closest("[data-bulk-none]")){bulkState.matches.forEach(m=>m.checked=false);renderTagList();return;}
+    if(e.target.closest("[data-bulk-cancel]")){bulkState=null;clearOverlay();clearBulkHl();renderTagList();renderText();return;}
+    if(e.target.closest("[data-bulk-ok]")){applyBulk();return;}
+    const row=e.target.closest("[data-bulk-idx]");
+    if(row&&!e.target.matches('input[type="checkbox"]')){const m=bulkState.matches[+row.dataset.bulkIdx];if(m)bulkJump(m.start,m.end);}
+    return;
+  }
+  const go=e.target.closest("[data-go]");if(go){const s=spans.find(x=>x.id===+go.dataset.go);if(s){selectedSpanId=s.id;lastCover=[s.id];render();scrollSel();}}});
+document.getElementById("tagList").addEventListener("change",e=>{
+  if(!bulkState)return;
+  const chk=e.target.closest("[data-bulk-chk]");if(chk){bulkState.matches[+chk.dataset.bulkChk].checked=chk.checked;return;}
+  const radio=e.target.closest('input[name="bulkMode"]');if(radio)bulkState.applyMode=radio.value;
+});
 /* ===== 永続化（localStorage：自動保存＋復元） ===== */
 const LSKEY="teiTagger.v3";let saveTimer=null;
 function persist(){try{localStorage.setItem(LSKEY,JSON.stringify({plain,spans,seq,fontSize,sheetWidth,teiHeader,defs:DEFS,jisMap,bookmarks,bmSeq,currentFileName}));}catch(_){}}
