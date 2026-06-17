@@ -662,7 +662,10 @@ function applyRedraw(lo,hi){const s=spans.find(x=>x.id===redrawId);redrawId=null
 function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id===selectedSpanId);
   if(!sel){const bmb=pendingRange?`<button class="btn sm" data-addbm="1" style="margin-top:6px;display:block">ブックマーク追加</button>`:"";panel.innerHTML=`<div class="side-hint">${pendingRange?"範囲を選択中。パレットでタグを選ぶと確定します。":"本文をドラッグで選択 → パレットで確定。<br>色付き部分をタップすると編集できます。"}</div>${bmb}`;return;}
   const tl=s=>ANAG[s.tagId]?"分析":spanLabel(s);
-  let sw="";if(lastCover.length>1)sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${spanColor(s)}"></span>${escHtml(tl(s))}</button>`;}).join("")+`</div>`;
+  // ヘッダー（単数・複数ともに常時表示）
+  let sw="";
+  if(lastCover.length>1){sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${spanColor(s)}"></span>${escHtml(tl(s))}</button>`;}).join("")+`</div>`;}
+  else{sw=`<div class="switcher"><span class="sb cur"><span class="d" style="background:${spanColor(sel)}"></span>${escHtml(tl(sel))}</span></div>`;}
   // 同範囲スパン・アクティブタグ検出
   const sr=spans.filter(s=>s.tagId!=="ruby"&&s.start===sel.start&&s.end===sel.end);
   const toSid=s=>SIMPLE[s.tagId]?s.tagId:(Object.keys(SIMPLE).find(k=>SIMPLE[k].tag===s.tagId)||null);
@@ -680,17 +683,16 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
   let attrs="";const def=SIMPLE[sel.tagId];
   if(def)for(const ea of(EDITABLE[def.tag]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||(ea==='ref'&&def.tag==='persName'?'#':''))}"></div>`;
   else if(sel.tagId==="placeName")for(const ea of(EDITABLE["placeName"]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||'')}"></div>`;
-  if(ANAG[sel.tagId])attrs+=`<div class="field"><label>分析カテゴリ</label><button class="btn sm wide" data-editana="1">${escHtml((sel.anas||[]).join("・")||"未選択")}（変更）</button></div>`;
+  if(ANAG[sel.tagId])attrs+=`<div class="field"><button class="btn wide" data-editana="1">分析カテゴリー</button></div>`;
   panel.innerHTML=sw+`<div class="span-card">
-    <div class="top"><span class="sw" style="background:${spanColor(sel)}"></span><span class="nm">${escHtml(tl(sel))}</span></div>
-    <div class="field"><label>タグ種類（クリックで切り替え）</label>${tt}</div>
-    <div class="ex">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
+    <div class="ex" style="margin-top:0">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
     <div class="pos">位置 ${sel.start}–${sel.end}（${sel.end-sel.start}字）</div>
-    ${attrs}
     <div class="adj"><div class="adj-ttl">範囲の微調整</div>
       <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
       <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
       <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button></div>
+    <div class="field" style="margin-top:10px"><label>タグ種類（クリックで切り替え）</label>${tt}</div>
+    ${attrs}
     <button class="btn sm wide" data-bulk="1" style="margin-top:8px">タグを一括設定</button>
     <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
   </div>`;}
