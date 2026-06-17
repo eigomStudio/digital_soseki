@@ -200,6 +200,7 @@
   .tag-dlg-sec{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--rule);}
   .tag-dlg-sec:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
   .tag-dlg-ttl{font-size:11px;color:var(--ink-soft);letter-spacing:.06em;margin-bottom:6px;}
+  .dlg-ana-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;overflow:auto;max-height:35vh;}
 
   @media (max-width:980px){
     .app{grid-template-columns:1fr;grid-template-areas:"head" "pal" "main";}
@@ -670,7 +671,7 @@ function applyRedraw(lo,hi){const s=spans.find(x=>x.id===redrawId);redrawId=null
 /* ===== サイドパネル ===== */
 function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id===selectedSpanId);
   if(!sel){const bmb=pendingRange?`<button class="btn sm" data-addbm="1" style="margin-top:6px;display:block">ブックマーク追加</button>`:"";panel.innerHTML=`<div class="side-hint">${pendingRange?"範囲を選択中。パレットでタグを選ぶと確定します。":"本文をドラッグで選択 → パレットで確定。<br>色付き部分をタップすると編集できます。"}</div>${bmb}`;return;}
-  const tl=s=>ANAG[s.tagId]?"分析":spanLabel(s);
+  const tl=s=>{if(!ANAG[s.tagId])return spanLabel(s);const anas=(s.anas||[]).join(" ");return anas?"分析（"+anas+"）":"分析";};
   // ヘッダー（単数・複数ともに常時表示）
   let sw="";
   if(lastCover.length>1){sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${spanColor(s)}"></span>${escHtml(tl(s))}</button>`;}).join("")+`</div>`;}
@@ -680,14 +681,14 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
   if(def)for(const ea of(EDITABLE[def.tag]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||(ea==='ref'&&def.tag==='persName'?'#':''))}"></div>`;
   else if(sel.tagId==="placeName")for(const ea of(EDITABLE["placeName"]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||'')}"></div>`;
   panel.innerHTML=sw+`<div class="span-card">
-    <div class="ex" style="margin-top:0">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
-    <div class="pos">位置 ${sel.start}–${sel.end}（${sel.end-sel.start}字）</div>
-    <div class="adj"><div class="adj-ttl">範囲の微調整</div>
+    <div class="field" style="margin-top:0"><label>対象テキスト</label><div class="ex" style="margin:2px 0 0">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div></div>
+    ${attrs}
+    <div class="adj"><div class="adj-ttl">範囲の調整</div>
       <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
       <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
-      <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button></div>
+      <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button>
+      <div style="border-top:1px dashed var(--rule);margin-top:10px"></div></div>
     <button class="btn sm wide" data-edittags="1" style="margin-top:10px">タグの変更</button>
-    ${attrs}
     <button class="btn sm wide" data-bulk="1" style="margin-top:8px">タグを一括設定</button>
     <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
   </div>`;}
@@ -785,8 +786,8 @@ function renderTagDlgBd(){
   if(bgS.length){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">構造タグ</div><div class="type-tags" style="margin:0">`;
     h+=bgS.map(([id,d])=>`<button class="type-tag${tagDlgSimpleSel===id?' on':''}" data-dlg-simple="${escAttr(id)}"><span class="sw" style="background:${d.color}"></span>${escHtml(d.label)}</button>`).join("");
     h+=`</div></div>`;}
-  if(tagDlgEl&&ANAG[tagDlgEl]){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">分析カテゴリー</div><div class="type-tags" style="margin:0">`;
-    h+=ANAG[tagDlgEl].map(c=>`<button class="type-tag${tagDlgAnaSel.has(c.val)?' on':''}" data-dlg-ana="${escAttr(c.val)}"><span class="sw" style="background:${c.color}"></span>${escHtml(c.label)}</button>`).join("");
+  if(tagDlgEl&&ANAG[tagDlgEl]){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">分析カテゴリー</div><div class="dlg-ana-grid">`;
+    h+=ANAG[tagDlgEl].map(c=>`<button class="seg-opt${tagDlgAnaSel.has(c.val)?' on':''}" data-dlg-ana="${escAttr(c.val)}"><span class="sw" style="background:${c.color}"></span><span class="t">${escHtml(c.label)}</span></button>`).join("");
     h+=`</div></div>`;}
   if(otS.length){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">発話・引用</div><div class="type-tags" style="margin:0">`;
     h+=otS.map(([id,d])=>{const chip=d.channel==="underline"?`<span style="text-decoration:underline;text-decoration-color:var(--shu-soft)">あ</span>`:`<span style="font-style:italic">あ</span>`;return`<button class="type-tag${tagDlgOtherSels.has(id)?' on':''}" data-dlg-other="${escAttr(id)}">${chip}${escHtml(d.label)}</button>`;}).join("");
