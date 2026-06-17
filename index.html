@@ -197,6 +197,9 @@
   .type-tag.on{border-color:var(--shu);color:var(--shu);background:#fff0ee;}
   .type-tag .sw{width:10px;height:10px;border-radius:3px;border:1px solid rgba(0,0,0,.12);flex:0 0 auto;}
   .ttg{display:block;width:100%;font-size:10px;color:var(--ink-soft);margin-top:4px;letter-spacing:.06em;}
+  .tag-dlg-sec{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--rule);}
+  .tag-dlg-sec:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+  .tag-dlg-ttl{font-size:11px;color:var(--ink-soft);letter-spacing:.06em;margin-bottom:6px;}
 
   @media (max-width:980px){
     .app{grid-template-columns:1fr;grid-template-areas:"head" "pal" "main";}
@@ -264,6 +267,12 @@
   <div class="seg-grid" id="simpGrid"></div>
   <div class="f"><button class="btn ghost" id="simpCancel">取消</button><button class="btn primary" id="simpOk">確定</button></div>
 </div>
+
+<div class="modal" id="tagEditDlg"><div class="box" style="max-width:340px">
+  <div class="hd"><b>タグの変更</b></div>
+  <div class="bd" id="tagDlgBd"></div>
+  <div class="ft"><button class="btn" id="tagDlgCancel">キャンセル</button><button class="btn primary" id="tagDlgOk">確定</button></div>
+</div></div>
 
 <div class="modal" id="aboutModal"><div class="box" style="max-width:280px;text-align:center">
   <div class="bd" style="padding:28px 24px 8px;font-family:var(--sans)">
@@ -666,24 +675,10 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
   let sw="";
   if(lastCover.length>1){sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${spanColor(s)}"></span>${escHtml(tl(s))}</button>`;}).join("")+`</div>`;}
   else{sw=`<div class="switcher"><span class="sb cur"><span class="d" style="background:${spanColor(sel)}"></span>${escHtml(tl(sel))}</span></div>`;}
-  // 同範囲スパン・アクティブタグ検出
-  const sr=spans.filter(s=>s.tagId!=="ruby"&&s.start===sel.start&&s.end===sel.end);
-  const toSid=s=>SIMPLE[s.tagId]?s.tagId:(Object.keys(SIMPLE).find(k=>SIMPLE[k].tag===s.tagId)||null);
-  const aSids=new Set(sr.map(toSid).filter(Boolean));
-  const aSegSpan=sr.find(s=>ANAG[s.tagId]);
-  // タグ種類トグルボタン
-  const bgS=Object.entries(SIMPLE).filter(([,d])=>d.channel==="bg");
-  const otS=Object.entries(SIMPLE).filter(([,d])=>d.channel!=="bg");
-  let tt=`<div class="type-tags">`;
-  if(bgS.length){tt+=`<span class="ttg">構造タグ</span>`;tt+=bgS.map(([id,d])=>`<button class="type-tag${aSids.has(id)?' on':''}" data-tsimple="${escAttr(id)}" data-excl="1"><span class="sw" style="background:${d.color}"></span>${escHtml(d.label)}</button>`).join("");}
-  if(otS.length){tt+=`<span class="ttg">発話・引用</span>`;tt+=otS.map(([id,d])=>{const chip=d.channel==="underline"?`<span style="text-decoration:underline;text-decoration-color:var(--shu-soft)">あ</span>`:`<span style="font-style:italic">あ</span>`;return`<button class="type-tag${aSids.has(id)?' on':''}" data-tsimple="${escAttr(id)}">${chip}${escHtml(d.label)}</button>`;}).join("");}
-  for(const el in ANAG){tt+=`<span class="ttg">分析</span>`;tt+=`<button class="type-tag ana${aSegSpan?' on':''}" data-tseg="${escAttr(el)}"><span class="chip ana" style="width:11px;height:11px;border-radius:3px;display:inline-block;vertical-align:middle;flex-shrink:0"></span>分析 ▾</button>`;}
-  tt+=`</div>`;
-  // 属性編集
+  // 属性編集（ref/who/toWhom等）
   let attrs="";const def=SIMPLE[sel.tagId];
   if(def)for(const ea of(EDITABLE[def.tag]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||(ea==='ref'&&def.tag==='persName'?'#':''))}"></div>`;
   else if(sel.tagId==="placeName")for(const ea of(EDITABLE["placeName"]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||'')}"></div>`;
-  if(ANAG[sel.tagId])attrs+=`<div class="field"><button class="btn wide" data-editana="1">分析カテゴリー</button></div>`;
   panel.innerHTML=sw+`<div class="span-card">
     <div class="ex" style="margin-top:0">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
     <div class="pos">位置 ${sel.start}–${sel.end}（${sel.end-sel.start}字）</div>
@@ -691,7 +686,7 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
       <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
       <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
       <button class="btn sm wide" data-redraw="1">範囲を引き直す（本文をなぞる）</button></div>
-    <div class="field" style="margin-top:10px"><label>タグ種類（クリックで切り替え）</label>${tt}</div>
+    <button class="btn sm wide" data-edittags="1" style="margin-top:10px">タグの変更</button>
     ${attrs}
     <button class="btn sm wide" data-bulk="1" style="margin-top:8px">タグを一括設定</button>
     <div class="row"><button class="btn danger" data-del="${sel.id}">削除</button><button class="btn" data-deselect>選択解除</button></div>
@@ -766,6 +761,82 @@ $("#simpOk").onclick=()=>{if(!simpChooserTarget)return;const{simpleSpan,segSpan}
   head.addEventListener("pointermove",e=>{if(!drag)return;pop.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-pop.offsetWidth)+"px";pop.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-pop.offsetHeight)+"px";});
   head.addEventListener("pointerup",()=>drag=false);})();
 
+/* ===== タグ変更ダイアログ ===== */
+let tagDlgTarget=null,tagDlgSimpleSel=null,tagDlgAnaSel=new Set(),tagDlgOtherSels=new Set(),tagDlgEl=null;
+function openTagEditDlg(sel){
+  const toSid=s=>SIMPLE[s.tagId]?s.tagId:(Object.keys(SIMPLE).find(k=>SIMPLE[k].tag===s.tagId)||null);
+  const sr=spans.filter(s=>s.tagId!=="ruby"&&s.start===sel.start&&s.end===sel.end);
+  const bgSpan=sr.find(s=>{const sid=toSid(s);return sid&&SIMPLE[sid]&&SIMPLE[sid].channel==="bg";});
+  tagDlgSimpleSel=bgSpan?toSid(bgSpan):null;
+  const segSpan=sr.find(s=>ANAG[s.tagId]);
+  tagDlgEl=segSpan?segSpan.tagId:(Object.keys(ANAG)[0]||null);
+  tagDlgAnaSel=new Set(segSpan?segSpan.anas||[]:[]);
+  const otherSids=sr.map(toSid).filter(sid=>sid&&SIMPLE[sid]&&SIMPLE[sid].channel!=="bg");
+  tagDlgOtherSels=new Set(otherSids);
+  tagDlgTarget={spanId:sel.id,start:sel.start,end:sel.end};
+  renderTagDlgBd();
+  document.getElementById("tagEditDlg").classList.add("open");
+}
+function renderTagDlgBd(){
+  const bd=document.getElementById("tagDlgBd");
+  const bgS=Object.entries(SIMPLE).filter(([,d])=>d.channel==="bg");
+  const otS=Object.entries(SIMPLE).filter(([,d])=>d.channel!=="bg");
+  let h="";
+  if(bgS.length){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">構造タグ</div><div class="type-tags" style="margin:0">`;
+    h+=bgS.map(([id,d])=>`<button class="type-tag${tagDlgSimpleSel===id?' on':''}" data-dlg-simple="${escAttr(id)}"><span class="sw" style="background:${d.color}"></span>${escHtml(d.label)}</button>`).join("");
+    h+=`</div></div>`;}
+  if(tagDlgEl&&ANAG[tagDlgEl]){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">分析カテゴリー</div><div class="type-tags" style="margin:0">`;
+    h+=ANAG[tagDlgEl].map(c=>`<button class="type-tag${tagDlgAnaSel.has(c.val)?' on':''}" data-dlg-ana="${escAttr(c.val)}"><span class="sw" style="background:${c.color}"></span>${escHtml(c.label)}</button>`).join("");
+    h+=`</div></div>`;}
+  if(otS.length){h+=`<div class="tag-dlg-sec"><div class="tag-dlg-ttl">発話・引用</div><div class="type-tags" style="margin:0">`;
+    h+=otS.map(([id,d])=>{const chip=d.channel==="underline"?`<span style="text-decoration:underline;text-decoration-color:var(--shu-soft)">あ</span>`:`<span style="font-style:italic">あ</span>`;return`<button class="type-tag${tagDlgOtherSels.has(id)?' on':''}" data-dlg-other="${escAttr(id)}">${chip}${escHtml(d.label)}</button>`;}).join("");
+    h+=`</div></div>`;}
+  bd.innerHTML=h;
+}
+function closeTagEditDlg(){document.getElementById("tagEditDlg").classList.remove("open");tagDlgTarget=null;}
+function commitTagEdit(){
+  if(!tagDlgTarget)return;
+  const{start,end}=tagDlgTarget;
+  const toSid=s=>SIMPLE[s.tagId]?s.tagId:(Object.keys(SIMPLE).find(k=>SIMPLE[k].tag===s.tagId)||null);
+  const sr=spans.filter(s=>s.tagId!=="ruby"&&s.start===start&&s.end===end);
+  const anas=[...tagDlgAnaSel];
+  const noSimple=tagDlgSimpleSel===null,noAna=anas.length===0,noOther=tagDlgOtherSels.size===0;
+  pushUndo();
+  if(noSimple&&noAna&&noOther){
+    spans=spans.filter(s=>s.tagId==="ruby"||s.start!==start||s.end!==end);
+    selectedSpanId=null;lastCover=[];closeTagEditDlg();clearWarn();render();return;}
+  // 構造タグ（bg、排他）
+  const curBg=sr.find(s=>{const sid=toSid(s);return sid&&SIMPLE[sid]&&SIMPLE[sid].channel==="bg";});
+  if(tagDlgSimpleSel){
+    if(curBg){curBg.tagId=tagDlgSimpleSel;const d=SIMPLE[tagDlgSimpleSel];if(d)for(const ea of(EDITABLE[d.tag]||[]))delete curBg[ea];}
+    else spans.push({id:seq++,tagId:tagDlgSimpleSel,start,end});}
+  else if(curBg){spans=spans.filter(s=>s.id!==curBg.id);}
+  // 分析カテゴリー
+  const segSpan=sr.find(s=>ANAG[s.tagId]);
+  if(anas.length){
+    if(segSpan){segSpan.anas=anas;}
+    else if(tagDlgEl){spans.push({id:seq++,tagId:tagDlgEl,start,end,anas});}}
+  else if(segSpan){spans=spans.filter(s=>s.id!==segSpan.id);}
+  // 発話・引用（複数）
+  const curOther=sr.filter(s=>{const sid=toSid(s);return sid&&SIMPLE[sid]&&SIMPLE[sid].channel!=="bg";});
+  const curOtherSids=new Set(curOther.map(toSid));
+  for(const sid of tagDlgOtherSels){if(!curOtherSids.has(sid))spans.push({id:seq++,tagId:sid,start,end});}
+  for(const s of curOther){const sid=toSid(s);if(!tagDlgOtherSels.has(sid))spans=spans.filter(x=>x.id!==s.id);}
+  // selectedSpanId / lastCover 更新
+  const pos=start;const nc=spans.filter(x=>x.tagId!=="ruby"&&x.start<=pos&&pos<x.end);nc.sort((a,b)=>(a.end-a.start)-(b.end-b.start));lastCover=nc.map(x=>x.id);
+  if(!spans.find(x=>x.id===selectedSpanId)){selectedSpanId=nc.length?nc[0].id:null;}
+  closeTagEditDlg();clearWarn();render();}
+document.getElementById("tagDlgBd").addEventListener("click",e=>{
+  const ds=e.target.closest("[data-dlg-simple]");
+  if(ds){const id=ds.dataset.dlgSimple;tagDlgSimpleSel=tagDlgSimpleSel===id?null:id;renderTagDlgBd();return;}
+  const da=e.target.closest("[data-dlg-ana]");
+  if(da){const v=da.dataset.dlgAna;if(tagDlgAnaSel.has(v))tagDlgAnaSel.delete(v);else tagDlgAnaSel.add(v);da.classList.toggle("on");return;}
+  const doo=e.target.closest("[data-dlg-other]");
+  if(doo){const id=doo.dataset.dlgOther;if(tagDlgOtherSels.has(id))tagDlgOtherSels.delete(id);else tagDlgOtherSels.add(id);doo.classList.toggle("on");return;}
+});
+document.getElementById("tagDlgCancel").onclick=closeTagEditDlg;
+document.getElementById("tagDlgOk").onclick=commitTagEdit;
+
 /* ===== パレット ===== */
 function buildPalette(){const pal=$("#palette");pal.innerHTML="";
   const mk=(html,data,extra="")=>{const b=document.createElement("button");b.className="pen "+extra;b.dataset.apply=data;b.innerHTML=html;return b;};
@@ -796,32 +867,8 @@ $("#sidePanel").addEventListener("click",e=>{
   const go=e.target.closest("[data-go]");if(go){const s=spans.find(x=>x.id===+go.dataset.go);if(s){selectedSpanId=s.id;lastCover=[s.id];render();scrollSel();}return;}
   const adj=e.target.closest("[data-adj]");if(adj){const a=adj.dataset.adj;nudge(a[0]==="s"?"start":"end",(a==="sw"||a==="ew")?-1*(a[0]==="s"?1:-1):(a[0]==="s"?1:-1));return;}
   if(e.target.closest("[data-redraw]")){redrawId=selectedSpanId;warn("引き直す範囲を本文上でなぞってください。");return;}
-  if(e.target.closest("[data-editana]")){const s=spans.find(x=>x.id===selectedSpanId);if(s&&ANAG[s.tagId])openSegChooser(s.tagId,{mode:"edit",id:s.id},s.anas||[]);return;}
+  if(e.target.closest("[data-edittags]")){const s=spans.find(x=>x.id===selectedSpanId);if(s)openTagEditDlg(s);return;}
   if(e.target.closest("[data-bulk]")){openBulkPanel();return;}
-  const tsimple=e.target.closest("[data-tsimple]");
-  if(tsimple){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;
-    const tid=tsimple.dataset.tsimple,isExcl=tsimple.dataset.excl==="1";
-    const sr=spans.filter(x=>x.tagId!=="ruby"&&x.start===s.start&&x.end===s.end);
-    const toSid=x=>SIMPLE[x.tagId]?x.tagId:(Object.keys(SIMPLE).find(k=>SIMPLE[k].tag===x.tagId)||null);
-    const tgt=sr.find(x=>toSid(x)===tid);
-    pushUndo();
-    if(tgt){spans=spans.filter(x=>x.id!==tgt.id);}
-    else if(isExcl){const exBg=sr.filter(x=>{const sid=toSid(x);return sid&&SIMPLE[sid]&&SIMPLE[sid].channel==="bg";});
-      if(exBg.length){exBg[0].tagId=tid;const d=SIMPLE[tid];if(d)for(const ea of(EDITABLE[d.tag]||[]))delete exBg[0][ea];spans=spans.filter(x=>!exBg.slice(1).find(b=>b.id===x.id));}
-      else spans.push({id:seq++,tagId:tid,start:s.start,end:s.end});}
-    else spans.push({id:seq++,tagId:tid,start:s.start,end:s.end});
-    const pos=s.start;const nc=spans.filter(x=>x.tagId!=="ruby"&&x.start<=pos&&pos<x.end);nc.sort((a,b)=>(a.end-a.start)-(b.end-b.start));lastCover=nc.map(x=>x.id);if(!spans.find(x=>x.id===selectedSpanId)){selectedSpanId=nc.length?nc[0].id:null;}
-    clearWarn();render();return;}
-  const tseg=e.target.closest("[data-tseg]");
-  if(tseg){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;
-    const el=tseg.dataset.tseg;
-    const sr=spans.filter(x=>x.tagId!=="ruby"&&x.start===s.start&&x.end===s.end);
-    const asg=sr.find(x=>ANAG[x.tagId]);
-    if(asg){pushUndo();spans=spans.filter(x=>x.id!==asg.id);
-      const pos=s.start;const nc=spans.filter(x=>x.tagId!=="ruby"&&x.start<=pos&&pos<x.end);nc.sort((a,b)=>(a.end-a.start)-(b.end-b.start));lastCover=nc.map(x=>x.id);if(!spans.find(x=>x.id===selectedSpanId)){selectedSpanId=nc.length?nc[0].id:null;}
-      clearWarn();render();}
-    else openSegChooser(el,{mode:"new",range:[s.start,s.end]},[]);
-    return;}
 });
 $("#sidePanel").addEventListener("input",e=>{
   const bmta=e.target.closest("[data-bmid]");if(bmta){const b=bookmarks.find(x=>x.id===+bmta.dataset.bmid);if(b){b.memo=bmta.value;debouncedPersist();}return;}
