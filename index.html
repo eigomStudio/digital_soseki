@@ -247,9 +247,15 @@
 </div>
 
 <div class="seg-pop" id="segPop">
-  <div class="h" id="segHead"><b id="segTitle">主題（複数選択可）</b></div>
+  <div class="h" id="segHead"><b id="segTitle">分析（複数選択可）</b></div>
   <div class="seg-grid" id="segGrid"></div>
   <div class="f"><button class="btn ghost" id="segCancel">取消</button><button class="btn primary" id="segOk">確定</button></div>
+</div>
+
+<div class="seg-pop" id="simpPop">
+  <div class="h" id="simpHead"><b>構造タグを選択</b></div>
+  <div class="seg-grid" id="simpGrid"></div>
+  <div class="f"><button class="btn ghost" id="simpCancel">取消</button><button class="btn primary" id="simpOk">確定</button></div>
 </div>
 
 <div class="modal" id="aboutModal"><div class="box" style="max-width:280px;text-align:center">
@@ -292,7 +298,7 @@
   <div class="bd">
     <p class="hint">Excel(.xlsx) または CSV を読み込みます。想定列（1行目ヘッダー）：<b>色／タグ／ラベル／属性／属性値</b>。
       例：<code>#fad2e1, seg, 恋愛, ana, #love</code>／<code>#c9ddf2, persName, 登場人物, type, chr</code>。
-      属性値が <code>ana</code> の行は「主題」グループとしてまとめ、複数選択で <code>ana="#a #b"</code> のように束ねます。
+      属性値が <code>ana</code> の行は「分析」グループとしてまとめ、複数選択で <code>ana="#a #b"</code> のように束ねます。
       読み込んだ定義は自動保存され、次回も保持されます。</p>
     <div class="toolrow">
       <button class="btn sm" id="btnPickDefs">定義ファイルを選択…</button>
@@ -302,7 +308,7 @@
     </div>
     <p class="hint">現在の定義：<span id="defsNow"></span></p>
     <hr class="def-sep">
-    <div class="def-sec-ttl">主題カテゴリ</div>
+    <div class="def-sec-ttl">分析カテゴリ</div>
     <div class="add-form">
       <input type="color" id="newAnaColor" value="#e0e0e0" title="色">
       <input type="text" id="newAnaLabel" placeholder="ラベル" maxlength="20">
@@ -370,7 +376,7 @@ function rebuildDefs(){ SIMPLE={};ANAG={};
 const isHead=id=>SIMPLE[id]&&SIMPLE[id].tag==="head";
 function spanColor(s){ if(s.tagId==="ruby")return"#efe9da"; const g=ANAG[s.tagId]; if(g){const c=g.find(x=>x.val===(s.anas||[])[0]);return c?c.color:"#e8e2d0";} const d=SIMPLE[s.tagId];return d?d.color:"#e8e2d0"; }
 function spanChannel(s){ if(s.tagId==="ruby")return"ruby"; if(ANAG[s.tagId])return"bg"; const d=SIMPLE[s.tagId];return d?d.channel:"bg"; }
-function spanLabel(s){ if(s.tagId==="ruby")return"ルビ"; const g=ANAG[s.tagId]; if(g){const ls=(s.anas||[]).map(v=>(g.find(c=>c.val===v)||{}).label||v);return (s.tagId==="seg"?"主題":s.tagId)+"："+(ls.join("・")||"—");} const d=SIMPLE[s.tagId];return d?d.label:s.tagId; }
+function spanLabel(s){ if(s.tagId==="ruby")return"ルビ"; const g=ANAG[s.tagId]; if(g){const ls=(s.anas||[]).map(v=>(g.find(c=>c.val===v)||{}).label||v);return (s.tagId==="seg"?"分析":s.tagId)+"："+(ls.join("・")||"—");} const d=SIMPLE[s.tagId];return d?d.label:s.tagId; }
 function buildOC(s){ if(s.tagId==="ruby")return{open:"<ruby>",close:`<rt>${escHtml(s.reading||"")}</rt></ruby>`,depth:100};
   const g=ANAG[s.tagId]; if(g){const ana=(s.anas||[]).join(" ")||"#uncategorized";return{open:`<${s.tagId} ana="${escAttr(ana)}">`,close:`</${s.tagId}>`,depth:1};}
   const d=SIMPLE[s.tagId]; if(!d){if(s.tagId==="placeName"){let a="";for(const ea of(EDITABLE["placeName"]||[]))if(s[ea])a+=` ${ea}="${escAttr(s[ea])}"`;return{open:`<placeName${a}>`,close:`</placeName>`,depth:0};}return{open:"",close:"",depth:0};} let a=d.attr?` ${d.attr}="${escAttr(d.val)}"`:"";
@@ -635,9 +641,9 @@ function selectByOffset(g){let cover=spans.filter(s=>s.tagId!=="ruby"&&s.start<=
 function crosses(a,b){if(!(a.start<b.end&&b.start<a.end))return false;const x=b.start<=a.start&&a.end<=b.end,y=a.start<=b.start&&b.end<=a.end;return!x&&!y;}
 function pushUndo(){undoStack.push(JSON.stringify(spans));if(undoStack.length>120)undoStack.shift();}
 let undoStack=[];
-function commitSimple(tagId,lo,hi){const cand={id:seq,tagId,start:lo,end:hi};const hit=spans.find(s=>crosses(cand,s));
+function commitSimple(tagId,lo,hi,skipUndo=false){const cand={id:seq,tagId,start:lo,end:hi};const hit=spans.find(s=>crosses(cand,s));
   if(hit){warn(`交差のため適用できません（「${spanLabel({tagId})}」が「${spanLabel(hit)}」と交差）。入れ子になるよう取り直してください。`);return;}
-  pushUndo();seq++;spans.push(cand);selectedSpanId=cand.id;lastCover=[cand.id];pendingRange=null;clearWarn();render();}
+  if(!skipUndo)pushUndo();seq++;spans.push(cand);selectedSpanId=cand.id;lastCover=[cand.id];pendingRange=null;clearWarn();render();}
 function eraseRange(lo,hi){let changed=false;const next=[];for(const s of spans){if(s.tagId==="ruby"||s.end<=lo||s.start>=hi){next.push(s);continue;}changed=true;if(s.start<lo)next.push({...s,id:seq++,end:lo});if(s.end>hi)next.push({...s,id:seq++,start:hi});}
   if(!changed)return;pushUndo();spans=next;if(!spans.find(s=>s.id===selectedSpanId)){selectedSpanId=null;lastCover=[];}clearWarn();render();}
 function deleteSpan(id){pushUndo();spans=spans.filter(s=>s.id!==id);if(selectedSpanId===id){selectedSpanId=null;lastCover=[];}render();}
@@ -651,18 +657,23 @@ function renderSide(){const panel=$("#sidePanel");const sel=spans.find(s=>s.id==
   let sw="";if(lastCover.length>1)sw=`<div class="switcher">`+lastCover.map(id=>{const s=spans.find(x=>x.id===id);if(!s)return"";return `<button class="sb ${id===sel.id?'cur':''}" data-sw="${id}"><span class="d" style="background:${spanColor(s)}"></span>${escHtml(spanLabel(s))}</button>`;}).join("")+`</div>`;
   // 種類変更セレクト
   let opts="";for(const id in SIMPLE)opts+=`<option value="${id}" ${sel.tagId===id?"selected":""}>${escHtml(SIMPLE[id].label)}</option>`;
-  for(const el in ANAG)opts+=`<option value="@${el}" ${sel.tagId===el?"selected":""}>${el==="seg"?"主題（複数選択）":el}…</option>`;
+  for(const el in ANAG)opts+=`<option value="@${el}" ${sel.tagId===el?"selected":""}>${el==="seg"?"分析（複数選択）":el}…</option>`;
   // 属性編集
   let attrs="";const def=SIMPLE[sel.tagId];
   if(def)for(const ea of(EDITABLE[def.tag]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||(ea==='ref'&&def.tag==='persName'?'#':''))}"></div>`;
   else if(sel.tagId==="placeName")for(const ea of(EDITABLE["placeName"]||[]))attrs+=`<div class="field"><label>${ea}</label><input data-attr="${ea}" value="${escAttr(sel[ea]||'')}"></div>`;
   if(ANAG[sel.tagId])attrs+=`<div class="field"><label>分類（ana）</label><button class="btn sm wide" data-editana="1">${escHtml((sel.anas||[]).join("・")||"未選択")}（変更）</button></div>`;
+  // 構造タグ追加/変更ボタン
+  let simpBtn="";
+  if(sel.tagId!=="ruby"){const hasStruct=SIMPLE[sel.tagId]?true:spans.some(s=>SIMPLE[s.tagId]&&s.start===sel.start&&s.end===sel.end);
+    simpBtn=`<button class="btn sm wide" data-editsimp="1" style="margin-top:8px">${hasStruct?"構造タグを変更":"構造タグを追加"}</button>`;}
   panel.innerHTML=sw+`<div class="span-card">
     <div class="top"><span class="sw" style="background:${spanColor(sel)}"></span><span class="nm">${escHtml(spanLabel(sel))}</span></div>
     <div class="field"><label>種類を変更（範囲は保持）</label><select data-type>${opts}</select></div>
     <div class="ex">${escHtml(plain.slice(sel.start,sel.end))||"（空）"}</div>
     <div class="pos">位置 ${sel.start}–${sel.end}（${sel.end-sel.start}字）</div>
     ${attrs}
+    ${simpBtn}
     <div class="adj"><div class="adj-ttl">範囲の微調整</div>
       <div class="adj-row"><span class="adj-l">開始</span><button class="btn sm" data-adj="sw">◀ 広げる</button><button class="btn sm" data-adj="sn">狭める ▶</button></div>
       <div class="adj-row"><span class="adj-l">終了</span><button class="btn sm" data-adj="en">◀ 狭める</button><button class="btn sm" data-adj="ew">広げる ▶</button></div>
@@ -675,7 +686,7 @@ function scrollSel(){const s=spans.find(x=>x.id===selectedSpanId);if(!s)return;c
 /* ===== seg（ana）フローティング・チューザ：複数選択 ===== */
 let chooserEl=null,chooserSel=null,chooserTarget=null;
 function openSegChooser(element,target,initial){chooserEl=element;chooserSel=new Set(initial||[]);chooserTarget=target;
-  $("#segTitle").textContent=(element==="seg"?"主題":element)+"（複数選択可）";
+  $("#segTitle").textContent=(element==="seg"?"分析":element)+"（複数選択可）";
   const grid=$("#segGrid");grid.innerHTML=ANAG[element].map(c=>`<button class="seg-opt ${chooserSel.has(c.val)?'on':''}" data-val="${escAttr(c.val)}"><span class="sw" style="background:${c.color}"></span><span class="t">${escHtml(c.label)}</span></button>`).join("");
   const pop=$("#segPop");pop.classList.add("open");pop.style.left="0px";pop.style.top="0px";
   // 選択範囲を避けて配置
@@ -686,11 +697,56 @@ function closeSegChooser(){$("#segPop").classList.remove("open");chooserEl=choos
 $("#segGrid").addEventListener("click",e=>{const o=e.target.closest("[data-val]");if(!o)return;const v=o.dataset.val;if(chooserSel.has(v))chooserSel.delete(v);else chooserSel.add(v);o.classList.toggle("on");});
 $("#segCancel").onclick=closeSegChooser;
 $("#segOk").onclick=()=>{const anas=[...chooserSel];if(!anas.length){warn("分類を1つ以上選んでください。");return;}
-  if(chooserTarget.mode==="new"){const[lo,hi]=chooserTarget.range;const cand={id:seq,tagId:chooserEl,start:lo,end:hi,anas};const hit=spans.find(s=>crosses(cand,s));if(hit){warn("交差のため適用できません。");closeSegChooser();return;}pushUndo();seq++;spans.push(cand);selectedSpanId=cand.id;lastCover=[cand.id];pendingRange=null;}
+  if(chooserTarget.mode==="new"){const[lo,hi]=chooserTarget.range;const cand={id:seq,tagId:chooserEl,start:lo,end:hi,anas};const hit=spans.find(s=>crosses(cand,s));if(hit){warn("交差のため適用できません。");closeSegChooser();return;}pushUndo();if(chooserTarget.overwrite)spans=spans.filter(s=>s.tagId==="ruby"||s.start!==lo||s.end!==hi);seq++;spans.push(cand);selectedSpanId=cand.id;lastCover=[cand.id];pendingRange=null;}
   else{const s=spans.find(x=>x.id===chooserTarget.id);if(s){pushUndo();s.tagId=chooserEl;s.anas=anas;delete s.ref;delete s.who;delete s.toWhom;delete s.type;selectedSpanId=s.id;}}
   closeSegChooser();clearWarn();render();};
 // チューザのドラッグ移動
 (()=>{const pop=$("#segPop"),head=$("#segHead");let dx=0,dy=0,drag=false;
+  head.addEventListener("pointerdown",e=>{drag=true;const r=pop.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;head.setPointerCapture(e.pointerId);e.preventDefault();});
+  head.addEventListener("pointermove",e=>{if(!drag)return;pop.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-pop.offsetWidth)+"px";pop.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-pop.offsetHeight)+"px";});
+  head.addEventListener("pointerup",()=>drag=false);})();
+
+/* ===== 構造タグ選択フローティング・パネル ===== */
+let simpChooserSel=null,simpChooserTarget=null;
+function openSimpChooser(sel){
+  let simpleSpan=null,segSpan=null;
+  if(ANAG[sel.tagId]){segSpan=sel;simpleSpan=spans.find(s=>SIMPLE[s.tagId]&&s.start===sel.start&&s.end===sel.end)||null;}
+  else{simpleSpan=sel;segSpan=spans.find(s=>ANAG[s.tagId]&&s.start===sel.start&&s.end===sel.end)||null;}
+  simpChooserSel=simpleSpan?simpleSpan.tagId:null;
+  simpChooserTarget={simpleSpan,segSpan};
+  const grid=$("#simpGrid");
+  let html=`<button class="seg-opt${simpChooserSel===null?' on':''}" data-simpval="__none__"><span class="sw" style="background:var(--rule-strong)"></span><span class="t">なし</span></button>`;
+  for(const id in SIMPLE){const d=SIMPLE[id];let chip;
+    if(d.channel==="underline")chip=`<span class="sw" style="background:transparent;border-color:transparent;text-decoration:underline;text-decoration-color:var(--shu-soft)">あ</span>`;
+    else if(d.channel==="italic")chip=`<span class="sw" style="background:transparent;border-color:transparent;font-style:italic">あ</span>`;
+    else chip=`<span class="sw" style="background:${d.color}"></span>`;
+    html+=`<button class="seg-opt${simpChooserSel===id?' on':''}" data-simpval="${escAttr(id)}">${chip}<span class="t">${escHtml(d.label)}</span></button>`;}
+  grid.innerHTML=html;
+  const pop=$("#simpPop");pop.classList.add("open");pop.style.left="0px";pop.style.top="0px";
+  let x=innerWidth-pop.offsetWidth-20,y=120;
+  const refS=simpleSpan||segSpan;
+  if(refS){const rng=globalRangeToDom(refS.start,refS.end);if(rng){const r=rng.getBoundingClientRect();y=r.bottom+8;if(y+pop.offsetHeight>innerHeight-8)y=Math.max(8,r.top-pop.offsetHeight-8);x=Math.min(Math.max(8,r.left),innerWidth-pop.offsetWidth-8);}}
+  pop.style.left=x+"px";pop.style.top=y+"px";}
+function closeSimpChooser(){$("#simpPop").classList.remove("open");simpChooserSel=null;simpChooserTarget=null;}
+$("#simpGrid").addEventListener("click",e=>{const o=e.target.closest("[data-simpval]");if(!o)return;
+  simpChooserSel=o.dataset.simpval==="__none__"?null:o.dataset.simpval;
+  $("#simpGrid").querySelectorAll("[data-simpval]").forEach(b=>b.classList.toggle("on",b.dataset.simpval===(simpChooserSel||"__none__")));});
+$("#simpCancel").onclick=closeSimpChooser;
+$("#simpOk").onclick=()=>{if(!simpChooserTarget)return;const{simpleSpan,segSpan}=simpChooserTarget;
+  if(simpChooserSel===null){
+    if(!simpleSpan){closeSimpChooser();return;}
+    pushUndo();spans=spans.filter(s=>s.id!==simpleSpan.id);
+    if(selectedSpanId===simpleSpan.id){if(segSpan){selectedSpanId=segSpan.id;lastCover=[segSpan.id];}else{selectedSpanId=null;lastCover=[];}}
+  }else{
+    if(simpleSpan){pushUndo();simpleSpan.tagId=simpChooserSel;const d=SIMPLE[simpChooserSel];if(d)for(const ea of(EDITABLE[d.tag]||[]))delete simpleSpan[ea];}
+    else{const ref=segSpan||spans.find(x=>x.id===selectedSpanId);if(!ref){closeSimpChooser();return;}
+      const cand={id:seq,tagId:simpChooserSel,start:ref.start,end:ref.end};
+      if(spans.some(s=>crosses(cand,s))){warn("交差のため構造タグを追加できません。");closeSimpChooser();return;}
+      pushUndo();seq++;spans.push(cand);}
+  }
+  closeSimpChooser();clearWarn();render();};
+// simpPop ドラッグ移動
+(()=>{const pop=$("#simpPop"),head=$("#simpHead");let dx=0,dy=0,drag=false;
   head.addEventListener("pointerdown",e=>{drag=true;const r=pop.getBoundingClientRect();dx=e.clientX-r.left;dy=e.clientY-r.top;head.setPointerCapture(e.pointerId);e.preventDefault();});
   head.addEventListener("pointermove",e=>{if(!drag)return;pop.style.left=Math.min(Math.max(0,e.clientX-dx),innerWidth-pop.offsetWidth)+"px";pop.style.top=Math.min(Math.max(0,e.clientY-dy),innerHeight-pop.offsetHeight)+"px";});
   head.addEventListener("pointerup",()=>drag=false);})();
@@ -705,14 +761,16 @@ function buildPalette(){const pal=$("#palette");pal.innerHTML="";
     else if(d.channel==="italic")chip=`<span class="chip" style="font-style:italic">あ</span>`;
     else chip=`<span class="chip" style="background:${d.color}"></span>`;
     pal.appendChild(mk(`${chip}<span class="lbl">${escHtml(d.label)}</span>`,id));}
-  for(const el in ANAG){pal.appendChild(sep());pal.appendChild(mk(`<span class="chip ana"></span><span class="lbl">${el==="seg"?"主題":el} ▾</span>`,"@"+el,"ana"));}
+  for(const el in ANAG){pal.appendChild(sep());pal.appendChild(mk(`<span class="chip ana"></span><span class="lbl">${el==="seg"?"分析":el} ▾</span>`,"@"+el,"ana"));}
   pal.appendChild(sep());pal.appendChild(mk(`<span class="chip"></span><span class="lbl">消しゴム</span>`,"__eraser","eraser"));}
 document.getElementById("btnCont").addEventListener("click",()=>{contMode=!contMode;document.getElementById("btnCont").classList.toggle("on",contMode);});
 $("#palette").addEventListener("click",e=>{const b=e.target.closest(".pen");if(!b)return;const data=b.dataset.apply;
   if(!pendingRange){warn("先に本文をドラッグして選択してください。");return;}const[lo,hi]=pendingRange;
-  if(data==="__eraser"){eraseRange(lo,hi);pendingRange=null;}
-  else if(data[0]==="@"){openSegChooser(data.slice(1),{mode:"new",range:[lo,hi]},[]);}
-  else commitSimple(data,lo,hi);});
+  if(data==="__eraser"){eraseRange(lo,hi);pendingRange=null;return;}
+  const exactMatch=spans.some(s=>s.tagId!=="ruby"&&s.start===lo&&s.end===hi);
+  if(exactMatch&&!confirm("すでにタグがあります。上書きしますか？"))return;
+  if(data[0]==="@"){openSegChooser(data.slice(1),{mode:"new",range:[lo,hi],overwrite:exactMatch},[]);}
+  else{if(exactMatch){pushUndo();spans=spans.filter(s=>s.tagId==="ruby"||s.start!==lo||s.end!==hi);commitSimple(data,lo,hi,true);}else commitSimple(data,lo,hi);}});
 
 /* ===== サイドパネル操作 ===== */
 $("#sidePanel").addEventListener("click",e=>{
@@ -724,6 +782,7 @@ $("#sidePanel").addEventListener("click",e=>{
   const adj=e.target.closest("[data-adj]");if(adj){const a=adj.dataset.adj;nudge(a[0]==="s"?"start":"end",(a==="sw"||a==="ew")?-1*(a[0]==="s"?1:-1):(a[0]==="s"?1:-1));return;}
   if(e.target.closest("[data-redraw]")){redrawId=selectedSpanId;warn("引き直す範囲を本文上でなぞってください。");return;}
   if(e.target.closest("[data-editana]")){const s=spans.find(x=>x.id===selectedSpanId);if(s&&ANAG[s.tagId])openSegChooser(s.tagId,{mode:"edit",id:s.id},s.anas||[]);return;}
+  if(e.target.closest("[data-editsimp]")){const s=spans.find(x=>x.id===selectedSpanId);if(s&&s.tagId!=="ruby")openSimpChooser(s);return;}
   if(e.target.closest("[data-bulk]")){openBulkPanel();return;}
 });
 $("#sidePanel").addEventListener("input",e=>{
@@ -782,9 +841,9 @@ function readDefFile(file){const n=file.name.toLowerCase();
   if(n.endsWith(".csv")){readTextAuto(file,t=>applyDefRows(csvRows(t)));}
   else if(window.XLSX){const r=new FileReader();r.onload=()=>{try{const wb=XLSX.read(new Uint8Array(r.result),{type:"array"});const ws=wb.Sheets[wb.SheetNames[0]];applyDefRows(XLSX.utils.sheet_to_json(ws,{header:1,defval:""}));}catch(err){alert("xlsx の読み込みに失敗：\n"+err.message);}};r.readAsArrayBuffer(file);}
   else alert("xlsx の読み込みにはインターネット接続が必要です。CSV なら接続不要です。");}
-function updateDefsStatus(){const n=Object.keys(SIMPLE).length+Object.values(ANAG).reduce((a,b)=>a+b.length,0);$("#defsNow").textContent=`${n}件（構造${Object.keys(SIMPLE).length}＋主題${(ANAG.seg||[]).length}）`;}
+function updateDefsStatus(){const n=Object.keys(SIMPLE).length+Object.values(ANAG).reduce((a,b)=>a+b.length,0);$("#defsNow").textContent=`${n}件（構造${Object.keys(SIMPLE).length}＋分析${(ANAG.seg||[]).length}）`;}
 function renderAnaCatList(){const el=$("#anaList");const rows=DEFS.map((d,i)=>({d,i})).filter(({d})=>(d.attr||"").toLowerCase()==="ana");
-  el.innerHTML=rows.length?rows.map(({d,i})=>`<div class="ana-row"><span class="ana-sw" style="background:${escAttr(d.color)}"></span><span class="ana-lbl">${escHtml(d.label)}</span><span class="ana-val">${escHtml(d.val)}</span><button class="btn sm ghost" data-delana="${i}">削除</button></div>`).join(""):`<div class="ana-row" style="color:var(--ink-soft)">主題カテゴリがありません。</div>`;}
+  el.innerHTML=rows.length?rows.map(({d,i})=>`<div class="ana-row"><span class="ana-sw" style="background:${escAttr(d.color)}"></span><span class="ana-lbl">${escHtml(d.label)}</span><span class="ana-val">${escHtml(d.val)}</span><button class="btn sm ghost" data-delana="${i}">削除</button></div>`).join(""):`<div class="ana-row" style="color:var(--ink-soft)">分析カテゴリがありません。</div>`;}
 function exportDefsCsv(){const rows=[["色","タグ","ラベル","属性","属性値"],...DEFS.map(d=>[d.color,d.tag,d.label,d.attr||"",d.val||""])];
   const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"}));a.download="tag_defs.csv";a.click();URL.revokeObjectURL(a.href);}
